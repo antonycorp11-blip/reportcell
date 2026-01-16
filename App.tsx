@@ -79,6 +79,8 @@ const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const activePalette = COLOR_PALETTES.find(p => p.id === (activeDiscipleship ? (activeDiscipleship as any).theme_color || 'indigo' : settings.themeColor)) || COLOR_PALETTES[0];
 
+  const [notifPermission, setNotifPermission] = useState<string>('default');
+
   // --- Efeitos ---
   useEffect(() => {
     document.documentElement.classList.add('dark');
@@ -90,6 +92,9 @@ const App: React.FC = () => {
         appId: "cebd1701-9209-4647-821f-b3dcf4e07565",
         allowLocalhostAsSecureOrigin: true,
       });
+
+      // Verificar permissão atual e atualizar estado
+      setNotifPermission(OneSignal.Notifications?.permission ? 'granted' : 'default');
     });
 
     // Verificar sessão atual
@@ -115,27 +120,38 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const syncPushToken = async (userId: string) => {
+  const requestNotificationPermission = async (targetId: string, type: 'discipulador' | 'leader') => {
     try {
       const OneSignal = (window as any).OneSignal;
       if (!OneSignal) return;
 
-      // Solicitar permissão (navegador mostrará o prompt)
-      // Nas versões novas o OneSignal gerencia isso, mas podemos forçar
+      console.log("Solicitando permissão...");
       await OneSignal.Notifications.requestPermission();
 
-      // Pegar o ID da inscrição
       const pushId = OneSignal.User.PushSubscription.id;
       if (pushId) {
-        await supabase
-          .from('profiles')
-          .update({ push_token: pushId })
-          .eq('id', userId);
-        console.log("Push Token sincronizado:", pushId);
+        if (type === 'discipulador') {
+          await supabase.from('profiles').update({ push_token: pushId }).eq('id', targetId);
+        } else {
+          await supabase.from('leaders').update({ push_token: pushId }).eq('id', targetId);
+        }
+        alert("Notificações ativadas!");
+        setNotifPermission('granted');
       }
     } catch (err) {
-      console.warn("OneSignal não pronto ou erro:", err);
+      alert("Para ativar, permita as notificações no seu navegador.");
     }
+  };
+
+  const syncPushToken = async (userId: string) => {
+    try {
+      const OneSignal = (window as any).OneSignal;
+      if (!OneSignal) return;
+      const pushId = OneSignal.User.PushSubscription.id;
+      if (pushId) {
+        await supabase.from('profiles').update({ push_token: pushId }).eq('id', userId);
+      }
+    } catch (err) { }
   };
 
   useEffect(() => {
@@ -978,6 +994,24 @@ ${leaderLines}
               </div>
             </div>
 
+            {notifPermission !== 'granted' && (
+              <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-[28px] p-6 mb-8 flex items-center justify-between animate-in slide-in-from-top duration-500">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-500/20">🔔</div>
+                  <div>
+                    <p className="text-sm font-black leading-tight mb-1">Alertas em tempo real</p>
+                    <p className="text-[10px] font-medium opacity-60">Receba avisos quando seus líderes enviarem relatórios.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => requestNotificationPermission(activeDiscipleship.id, 'discipulador')}
+                  className="ml-4 px-6 py-3 bg-indigo-600 text-white text-[10px] font-black rounded-xl shadow-xl active:scale-95 transition-all"
+                >
+                  ATIVAR
+                </button>
+              </div>
+            )}
+
             {/* Seletor Semana */}
             <div className="bg-white dark:bg-[#111827] rounded-3xl p-5 border border-gray-200 dark:border-gray-800 mb-6 shadow-sm">
               <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsWeekSelectorOpen(!isWeekSelectorOpen)}>
@@ -1132,6 +1166,24 @@ ${leaderLines}
               <IconButton onClick={() => setView(AppView.LEADER_LIST)}><Icons.ArrowLeft /></IconButton>
               <div><h1 className="text-2xl font-black tracking-tight">Olá, {currentLeader.name}</h1><p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Lançamento de Presença</p></div>
             </div>
+
+            {notifPermission !== 'granted' && (
+              <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-[28px] p-6 mb-8 flex items-center justify-between animate-in slide-in-from-top duration-500">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg shadow-emerald-500/20">⏰</div>
+                  <div>
+                    <p className="text-sm font-black leading-tight mb-1 text-emerald-700 dark:text-emerald-400">Lembrete de Envio</p>
+                    <p className="text-[10px] font-medium opacity-60 text-emerald-800 dark:text-emerald-500">Deseja ser lembrado de enviar o relatório no final de semana?</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => requestNotificationPermission(currentLeader.id, 'leader')}
+                  className="ml-4 px-6 py-3 bg-emerald-600 text-white text-[10px] font-black rounded-xl shadow-xl active:scale-95 transition-all"
+                >
+                  SIM
+                </button>
+              </div>
+            )}
             <div className="space-y-6">
               {[
                 { type: 'cell' as const, label: 'PRESENÇA CÉLULA', themeColor: activePalette.primary },
