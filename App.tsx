@@ -189,10 +189,19 @@ const App: React.FC = () => {
         }
         alert("Notificações ativadas com sucesso! No iPhone, verifique se você adicionou o app à sua Tela de Início.");
       } else {
-        console.warn("Permissão concedida mas Push ID não disponível ainda.");
-        // Try getting legacy user id as fallback or just warn
+        // PERMISSÃO NÃO CONCEDIDA NA HORA
+        console.warn("Permissão não concedida ou Push ID não gerado.");
+
         if (OneSignal.Notifications.permission) {
-          alert("Permissão de sistema concedida, mas não foi possível gerar o Token de Identificação. Tente recarregar a página.");
+          // Caso raríssimo onde permission=true mas pushId=null
+          alert("Permissão de sistema concedida, mas não foi possível gerar o Token. Tente recarregar a página.");
+        } else {
+          // Permission = false (Negado ou Fechado)
+          if (Notification.permission === 'denied') {
+            alert("As notificações estão BLOQUEADAS no seu navegador. Acesse as Configurações do Site (ícone de cadeado na barra de endereço) e vá em 'Permissões' > 'Notificações' para permitir.");
+          } else {
+            alert("Para ativar o recurso, você precisa clicar em 'Permitir' quando o navegador perguntar.");
+          }
         }
       }
     } catch (err: any) {
