@@ -12,6 +12,11 @@ const COLOR_PALETTES = [
   { id: 'violet', primary: '#7C3AED', secondary: '#A78BFA', tailwind: 'violet' },
 ];
 
+// Helper de formatação de nome (Capitalize)
+const formatName = (name: string) => {
+  return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
 const App: React.FC = () => {
   // --- Estados de Navegação e Autenticação ---
   const [view, setView] = useState<AppView>(AppView.SELECTION);
@@ -38,6 +43,8 @@ const App: React.FC = () => {
   const [myDisciples, setMyDisciples] = useState<Discipleship[]>([]); // Apenas cadastro
   const [pastorSummary, setPastorSummary] = useState<any[]>([]); // Dados da view (numeros)
   const [allReports, setAllReports] = useState<Report[]>([]); // Relatórios consolidados da rede
+  const [allNetworkLeaders, setAllNetworkLeaders] = useState<any[]>([]);
+  const [isAllLeadersModalOpen, setIsAllLeadersModalOpen] = useState(false);
 
   // --- Estados Ranking & Detalhes ---
   const [rankingData, setRankingData] = useState<any[]>([]);
@@ -78,6 +85,11 @@ const App: React.FC = () => {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const activePalette = COLOR_PALETTES.find(p => p.id === (activeDiscipleship ? (activeDiscipleship as any).theme_color || 'indigo' : settings.themeColor)) || COLOR_PALETTES[0];
+
+  // Helper de formatação de nome (Capitalize)
+  const formatName = (name: string) => {
+    return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
 
   const [notifPermission, setNotifPermission] = useState<string>('default');
 
@@ -436,8 +448,8 @@ const App: React.FC = () => {
       const { error: profileError } = await supabase.from('profiles').insert([{
         id: authData.user.id,
         email: regForm.email,
-        name: regForm.name,
-        discipleship_name: userRole === 'pastor' ? 'Rede Pastoral' : regForm.discipleship, // Se for pastor, nome da rede
+        name: formatName(regForm.name),
+        discipleship_name: userRole === 'pastor' ? 'Rede Pastoral' : formatName(regForm.discipleship), // Se for pastor, nome da rede
         avatar_url: finalAvatarUrl,
         theme_color: 'indigo',
         role: userRole,
@@ -496,7 +508,15 @@ const App: React.FC = () => {
   // --- Lógica Dados ---
   const addLeader = async () => {
     if (!newLeaderName.trim() || !session) return;
-    const { data } = await supabase.from('leaders').insert([{ name: newLeaderName, user_id: session.user.id }]).select().single();
+    const formattedName = formatName(newLeaderName);
+
+    // Check duplication locally
+    if (leaders.some(l => l.name.toLowerCase() === formattedName.toLowerCase())) {
+      alert("Já existe um líder com este nome.");
+      return;
+    }
+
+    const { data } = await supabase.from('leaders').insert([{ name: formattedName, user_id: session.user.id }]).select().single();
     if (data) {
       setLeaders([...leaders, { id: data.id, name: data.name, discipleshipId: data.user_id }]);
       setNewLeaderName('');
@@ -558,6 +578,32 @@ const App: React.FC = () => {
     setIsGoalModalOpen(false);
   };
 
+  const fetchAllNetworkLeaders = async () => {
+    if (!session || userRole !== 'pastor') return;
+    if (myDisciples.length === 0) await fetchMyDisciples(session.user.id);
+
+    const discipleshipIds = myDisciples.map(d => d.id);
+    if (discipleshipIds.length === 0) {
+      setAllNetworkLeaders([]);
+      return;
+    }
+
+    const { data: leadersData } = await supabase.from('leaders').select('id, name, user_id').in('user_id', discipleshipIds);
+    if (leadersData) {
+      const joined = leadersData.map(l => {
+        const d = myDisciples.find(md => md.id === l.user_id);
+        return {
+          leader_id: l.id,
+          leader_name: formatName(l.name),
+          discipulador_name: d ? formatName(d.name) : 'Desconhecido',
+          discipleship_name: d ? formatName(d.discipleshipName || '') : ''
+        };
+      });
+      joined.sort((a, b) => a.discipulador_name.localeCompare(b.discipulador_name) || a.leader_name.localeCompare(b.leader_name));
+      setAllNetworkLeaders(joined);
+    }
+  };
+
   const generatePastorNetworkText = () => {
     let t = `*RELATÓRIO DA REDE - ${selectedWeek.label}*\n\n`;
     const totalCell = pastorSummary.reduce((a, b: any) => a + (b.total_cell || 0), 0);
@@ -607,9 +653,30 @@ const App: React.FC = () => {
     setSendingStatus(prev => ({ ...prev, [key]: false }));
   };
 
-  const clearReport = async (leaderId: string, weekId: string) => {
-    await supabase.from('reports').delete().eq('leader_id', leaderId).eq('week_id', weekId);
-    setReports(prev => prev.filter(r => !(r.leaderId === leaderId && r.weekId === weekId)));
+  const clearReport = async (leaderId: string, weekId: string, type: 'cell' | 'worship') => {
+    // Buscar se existe
+    const { data: existing } = await supabase.from('reports').select('id, cell_count, worship_count').eq('leader_id', leaderId).eq('week_id', weekId).single();
+    if (existing) {
+      const updateData = type === 'cell'
+        ? { cell_count: 0, cell_sent: false }
+        : { worship_count: 0, worship_sent: false };
+
+      await supabase.from('reports').update(updateData).eq('id', existing.id);
+
+      setReports(prev => {
+        const idx = prev.findIndex(r => r.leaderId === leaderId && r.weekId === weekId);
+        if (idx > -1) {
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            [type === 'cell' ? 'cellCount' : 'worshipCount']: 0,
+            [type === 'cell' ? 'cellSent' : 'worshipSent']: false
+          };
+          return updated;
+        }
+        return prev;
+      });
+    }
   };
 
   const totals = leaders.reduce((acc, l) => {
@@ -927,6 +994,7 @@ ${leaderLines}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setView(AppView.RANKING)} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all text-indigo-500">🏆</button>
+                <button onClick={() => { fetchAllNetworkLeaders(); setIsAllLeadersModalOpen(true); }} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all text-indigo-500"><Icons.Users /></button>
                 <button onClick={() => setIsPastorExportModalOpen(true)} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all text-gray-500"><Icons.Clipboard /></button>
                 <IconButton onClick={handleLogout}><Icons.ArrowLeft /></IconButton>
               </div>
@@ -1172,9 +1240,12 @@ ${leaderLines}
                       </div>
                     </div>
                     {session && (
-                      <div className="flex gap-2 ml-2">
+                      <div className="flex gap-2 ml-2 items-center">
                         <button onClick={() => openGoalModal(l)} className="p-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl text-indigo-500 hover:bg-indigo-100 transition-colors"><Icons.Goal /></button>
-                        <button onClick={() => clearReport(l.id, selectedWeek.id)} className="p-3 bg-red-50 dark:bg-red-900/10 rounded-2xl hover:bg-red-100 transition-colors"><Icons.Trash /></button>
+                        <div className="flex flex-col gap-1">
+                          <button onClick={() => clearReport(l.id, selectedWeek.id, 'cell')} title="Limpar Célula" className="px-2 py-1 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 transition-colors text-[10px] font-bold text-red-500 uppercase tracking-tighter">Limpar Cél</button>
+                          <button onClick={() => clearReport(l.id, selectedWeek.id, 'worship')} title="Limpar Culto" className="px-2 py-1 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 transition-colors text-[10px] font-bold text-red-500 uppercase tracking-tighter">Limpar Culto</button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1401,7 +1472,7 @@ ${leaderLines}
                       </div>
                       <div className="ml-6 flex-1">
                         <h4 className="font-bold">{item.leader_name}</h4>
-                        <p className="text-[10px] opacity-60 uppercase">{item.discipleship_name}</p>
+                        <p className="text-[10px] opacity-60 uppercase">{item.discipulador_name || item.discipleship_name}</p>
                       </div>
                       <div className="text-2xl font-black" style={{ color }}>{val}</div>
                     </div>
@@ -1436,6 +1507,30 @@ ${leaderLines}
                   <input type="number" className="w-full text-4xl font-black bg-transparent border-b-2 border-gray-100 dark:border-gray-800 focus:border-emerald-500 outline-none pb-2 transition-all placeholder-gray-200 dark:placeholder-gray-800 text-emerald-600 dark:text-emerald-400" placeholder="0" value={goalForm.worship} onChange={e => setGoalForm({ ...goalForm, worship: e.target.value })} />
                 </div>
                 <button onClick={handleSaveGoal} className="w-full py-4 mt-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">SALVAR METAS</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL TODOS OS LÍDERES DA REDE (PASTOR) */}
+        {isAllLeadersModalOpen && (
+          <div className="fixed inset-0 z-[220] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-[#111827] w-full max-w-sm rounded-[32px] overflow-hidden flex flex-col max-h-[85vh] shadow-2xl">
+              <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                <div><h2 className="font-black text-xl">Líderes da Rede</h2><p className="text-xs opacity-60">Nome Padrão & Discipulador</p></div>
+                <button onClick={() => setIsAllLeadersModalOpen(false)}><Icons.X /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {allNetworkLeaders.map((l: any) => (
+                  <div key={l.leader_id} className="p-4 bg-gray-50 dark:bg-black/30 rounded-2xl flex justify-between items-center">
+                    <div>
+                      <p className="font-bold text-sm">{l.leader_name}</p>
+                      <p className="text-[10px] uppercase opacity-50 tracking-wide">{l.discipulador_name}</p>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                  </div>
+                ))}
+                {allNetworkLeaders.length === 0 && <p className="text-center opacity-40 p-10">Carregando...</p>}
               </div>
             </div>
           </div>
@@ -1536,7 +1631,7 @@ ${leaderLines}
         )}
 
       </div>
-    </div>
+    </div >
   );
 };
 
