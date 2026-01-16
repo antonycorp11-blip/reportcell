@@ -22,6 +22,7 @@ export interface Discipleship {
   role?: 'pastor' | 'discipulador';
   access_pin?: string;
   pastor_id?: string;
+  push_token?: string;
 }
 
 export interface Week {
@@ -36,6 +37,9 @@ export interface Leader {
   id: string;
   name: string;
   discipleshipId: string;
+  push_token?: string;
+  goal_cell?: number;
+  goal_worship?: number;
 }
 
 export interface Report {

@@ -81,6 +81,9 @@ const App: React.FC = () => {
 
   const [notifPermission, setNotifPermission] = useState<string>('default');
 
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = (window.navigator as any).standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
   // --- Efeitos ---
   useEffect(() => {
     document.documentElement.classList.add('dark');
@@ -93,8 +96,34 @@ const App: React.FC = () => {
         allowLocalhostAsSecureOrigin: true,
       });
 
-      // Verificar permissão atual e atualizar estado
-      setNotifPermission(OneSignal.Notifications?.permission ? 'granted' : 'default');
+      const checkPermission = () => {
+        // OneSignal.Notifications.permission é booleano no SDK v16
+        // Notification.permission é a API nativa do browser (granted, denied, default)
+        const hasPermission = OneSignal.Notifications?.permission === true || (window.Notification && Notification.permission === 'granted');
+        console.log("Notif Permission Check:", { OneSignal: OneSignal.Notifications?.permission, Native: window.Notification?.permission });
+        setNotifPermission(hasPermission ? 'granted' : 'default');
+      };
+
+      checkPermission();
+
+      // Sincronizar token se já tiver permissão
+      setTimeout(async () => {
+        const pushId = OneSignal.User.PushSubscription.id;
+        if (pushId) {
+          console.log("Auto-syncing token:", pushId);
+          // O targetId aqui é difícil pegar sem a sessão, mas se tivermos sessão, podemos tentar
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await supabase.from('profiles').update({ push_token: pushId }).eq('id', session.user.id);
+          }
+        }
+      }, 5000);
+
+      // Adicionar listener para mudanças de permissão
+      OneSignal.Notifications.addEventListener("permissionChange", (permission: boolean) => {
+        console.log("Permission changed:", permission);
+        setNotifPermission(permission ? 'granted' : 'default');
+      });
     });
 
     // Verificar sessão atual
@@ -128,18 +157,44 @@ const App: React.FC = () => {
       console.log("Solicitando permissão...");
       await OneSignal.Notifications.requestPermission();
 
-      const pushId = OneSignal.User.PushSubscription.id;
+      // Atualizar estado da UI imediatamente se a permissão foi concedida
+      if (OneSignal.Notifications.permission) {
+        setNotifPermission('granted');
+      }
+
+      // Tentar obter o push ID (pode demorar alguns segundos após o aceite)
+      let pushId = OneSignal.User.PushSubscription.id;
+
+      // Se não tiver pushId na hora, esperar um pouco
+      if (!pushId) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        pushId = OneSignal.User.PushSubscription.id;
+      }
+
       if (pushId) {
         if (type === 'discipulador') {
           await supabase.from('profiles').update({ push_token: pushId }).eq('id', targetId);
+          if (activeDiscipleship && activeDiscipleship.id === targetId) {
+            setActiveDiscipleship({ ...activeDiscipleship, push_token: pushId });
+          }
         } else {
           await supabase.from('leaders').update({ push_token: pushId }).eq('id', targetId);
+          if (currentLeader && currentLeader.id === targetId) {
+            setCurrentLeader({ ...currentLeader, push_token: pushId });
+          }
+          setLeaders(prev => prev.map(l => l.id === targetId ? { ...l, push_token: pushId } : l));
         }
-        alert("Notificações ativadas!");
-        setNotifPermission('granted');
+        alert("Notificações ativadas com sucesso! No iPhone, verifique se você adicionou o app à sua Tela de Início.");
+      } else {
+        console.warn("Permissão concedida mas Push ID não disponível ainda.");
+        // Try getting legacy user id as fallback or just warn
+        if (OneSignal.Notifications.permission) {
+          alert("Permissão de sistema concedida, mas não foi possível gerar o Token de Identificação. Tente recarregar a página.");
+        }
       }
-    } catch (err) {
-      alert("Para ativar, permita as notificações no seu navegador.");
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao ativar notificações: " + (err.message || err));
     }
   };
 
@@ -150,6 +205,9 @@ const App: React.FC = () => {
       const pushId = OneSignal.User.PushSubscription.id;
       if (pushId) {
         await supabase.from('profiles').update({ push_token: pushId }).eq('id', userId);
+        if (activeDiscipleship && activeDiscipleship.id === userId) {
+          setActiveDiscipleship({ ...activeDiscipleship, push_token: pushId });
+        }
       }
     } catch (err) { }
   };
@@ -193,6 +251,9 @@ const App: React.FC = () => {
         fetchPastorData(userId);
         setView(AppView.PASTOR_DASHBOARD);
       } else {
+        const OneSignal = (window as any).OneSignal;
+        const currentPushId = OneSignal?.User?.PushSubscription?.id;
+
         const discipulado: Discipleship = {
           id: data.id,
           name: data.discipleship_name,
@@ -202,7 +263,8 @@ const App: React.FC = () => {
           theme_color: data.theme_color,
           role: data.role,
           access_pin: data.access_pin,
-          pastor_id: data.pastor_id
+          pastor_id: data.pastor_id,
+          push_token: data.push_token || currentPushId
         };
         setActiveDiscipleship(discipulado);
         setView(AppView.DISCIPLE_DASHBOARD);
@@ -262,7 +324,8 @@ const App: React.FC = () => {
     if (data) {
       const formatted = data.map((d: any) => ({
         id: d.id, name: d.discipleship_name, discipuladorName: d.name, discipuladorPhoto: d.avatar_url,
-        email: d.email, theme_color: d.theme_color, role: d.role, access_pin: d.access_pin
+        email: d.email, theme_color: d.theme_color, role: d.role, access_pin: d.access_pin,
+        push_token: d.push_token
       }));
       setPublicDiscipleships(formatted);
     }
@@ -270,10 +333,16 @@ const App: React.FC = () => {
   };
 
   const fetchLeadersAndReports = async (userId: string) => {
-    // 1. Buscar Líderes
     const { data: leadersData } = await supabase.from('leaders').select('*').eq('user_id', userId);
     if (leadersData) {
-      setLeaders(leadersData.map((l: any) => ({ id: l.id, name: l.name, discipleshipId: l.user_id })));
+      setLeaders(leadersData.map((l: any) => ({
+        id: l.id,
+        name: l.name,
+        discipleshipId: l.user_id,
+        push_token: l.push_token,
+        goal_cell: l.goal_cell,
+        goal_worship: l.goal_worship
+      })));
     }
 
     // 2. Buscar Relatórios
@@ -433,7 +502,10 @@ const App: React.FC = () => {
   const openGoalModal = (leader: Leader) => {
     setCurrentGoalLeader(leader);
     const r = reports.find(rep => rep.leaderId === leader.id && rep.weekId === selectedWeek.id);
-    setGoalForm({ cell: r?.goalCell?.toString() || '', worship: r?.goalWorship?.toString() || '' });
+    // Usa a meta da semana se existir, senão a meta permanente do líder
+    const cellGoal = r?.goalCell ?? leader.goal_cell ?? '';
+    const worshipGoal = r?.goalWorship ?? leader.goal_worship ?? '';
+    setGoalForm({ cell: cellGoal.toString(), worship: worshipGoal.toString() });
     setIsGoalModalOpen(true);
   };
 
@@ -442,7 +514,10 @@ const App: React.FC = () => {
     const cGoal = parseInt(goalForm.cell) || 0;
     const wGoal = parseInt(goalForm.worship) || 0;
 
-    // Check existing
+    // 1. Atualizar meta permanente no líder
+    await supabase.from('leaders').update({ goal_cell: cGoal, goal_worship: wGoal }).eq('id', currentGoalLeader.id);
+
+    // 2. Atualizar ou Criar registro na semana atual
     const { data: existing } = await supabase.from('reports').select('*').eq('leader_id', currentGoalLeader.id).eq('week_id', selectedWeek.id).single();
 
     if (existing) {
@@ -994,13 +1069,16 @@ ${leaderLines}
               </div>
             </div>
 
-            {notifPermission !== 'granted' && (
+            {(notifPermission !== 'granted' || !activeDiscipleship?.push_token) && (
               <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-[28px] p-6 mb-8 flex items-center justify-between animate-in slide-in-from-top duration-500">
                 <div className="flex items-center gap-4 flex-1">
                   <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-500/20">🔔</div>
                   <div>
                     <p className="text-sm font-black leading-tight mb-1">Alertas em tempo real</p>
                     <p className="text-[10px] font-medium opacity-60">Receba avisos quando seus líderes enviarem relatórios.</p>
+                    {isIOS && !isStandalone && (
+                      <p className="text-[10px] font-bold text-indigo-500 mt-1 uppercase tracking-tight">📱 iPhone: Adicione à Tela de Início primeiro</p>
+                    )}
                   </div>
                 </div>
                 <button
@@ -1062,8 +1140,14 @@ ${leaderLines}
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${diff >= 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>{diff >= 0 ? '+' : ''}{diff} Saldo</span>
                       </div>
                       <div className="flex gap-4 mt-2">
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: activePalette.primary }}></div><span className="text-xs font-black opacity-60">Cél: {cell}</span></div>
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs font-black opacity-60">Culto: {worship}</span></div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: activePalette.primary }}></div>
+                          <span className="text-xs font-black opacity-60">Cél: {cell}{r?.goalCell || l.goal_cell ? `/${r?.goalCell || l.goal_cell}` : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                          <span className="text-xs font-black opacity-60">Culto: {worship}{r?.goalWorship || l.goal_worship ? `/${r?.goalWorship || l.goal_worship}` : ''}</span>
+                        </div>
                       </div>
                     </div>
                     {session && (
@@ -1148,6 +1232,7 @@ ${leaderLines}
                       const pushId = OneSignal.User.PushSubscription.id;
                       if (pushId) {
                         await supabase.from('leaders').update({ push_token: pushId }).eq('id', l.id);
+                        setCurrentLeader({ ...l, push_token: pushId });
                       }
                     }
                   } catch (e) { }
@@ -1167,13 +1252,16 @@ ${leaderLines}
               <div><h1 className="text-2xl font-black tracking-tight">Olá, {currentLeader.name}</h1><p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Lançamento de Presença</p></div>
             </div>
 
-            {notifPermission !== 'granted' && (
+            {(notifPermission !== 'granted' || !currentLeader?.push_token) && (
               <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-[28px] p-6 mb-8 flex items-center justify-between animate-in slide-in-from-top duration-500">
                 <div className="flex items-center gap-4 flex-1">
                   <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg shadow-emerald-500/20">⏰</div>
                   <div>
                     <p className="text-sm font-black leading-tight mb-1 text-emerald-700 dark:text-emerald-400">Lembrete de Envio</p>
                     <p className="text-[10px] font-medium opacity-60 text-emerald-800 dark:text-emerald-500">Deseja ser lembrado de enviar o relatório no final de semana?</p>
+                    {isIOS && !isStandalone && (
+                      <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase tracking-tight">📱 iPhone: Adicione à Tela de Início primeiro</p>
+                    )}
                   </div>
                 </div>
                 <button
@@ -1193,7 +1281,7 @@ ${leaderLines}
                 const isSent = card.type === 'cell' ? report.cellSent : report.worshipSent;
                 const isSending = sendingStatus[`${currentLeader.id}-${selectedWeek.id}-${card.type}`];
                 const count = card.type === 'cell' ? report.cellCount : report.worshipCount;
-                const goal = card.type === 'cell' ? (report.goalCell || 0) : (report.goalWorship || 0);
+                const goal = card.type === 'cell' ? Number(report.goalCell || currentLeader.goal_cell || 0) : Number(report.goalWorship || currentLeader.goal_worship || 0);
 
                 let feedbackNode = null;
                 if (isSent) {
