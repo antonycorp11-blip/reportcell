@@ -540,6 +540,12 @@ const App: React.FC = () => {
 
     // Update local state by refetching
     if (activeDiscipleship) fetchLeadersAndReports(activeDiscipleship.id);
+
+    // Force update currentLeader if it is the one being edited
+    if (currentLeader && currentLeader.id === currentGoalLeader.id) {
+      setCurrentLeader({ ...currentLeader, goal_cell: cGoal, goal_worship: wGoal });
+    }
+
     setIsGoalModalOpen(false);
   };
 
