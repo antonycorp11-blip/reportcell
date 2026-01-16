@@ -32,6 +32,7 @@ const App: React.FC = () => {
   // --- Estados de Dados do Supabase ---
   const [publicDiscipleships, setPublicDiscipleships] = useState<Discipleship[]>([]);
   const [activeDiscipleship, setActiveDiscipleship] = useState<Discipleship | null>(null);
+  const [pastorProfile, setPastorProfile] = useState<{ name: string, photo: string, id: string } | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<any>(WEEKS[0]);
   const [isWeekSelectorOpen, setIsWeekSelectorOpen] = useState(false);
 
@@ -287,6 +288,7 @@ const App: React.FC = () => {
       syncPushToken(userId);
 
       if (role === 'pastor') {
+        setPastorProfile({ name: data.name, photo: data.avatar_url, id: data.id });
         fetchPastorData(userId);
         setView(AppView.PASTOR_DASHBOARD);
       } else {
@@ -434,6 +436,47 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => { setRegForm({ ...regForm, photo: reader.result as string }); };
       reader.readAsDataURL(file);
+    }
+  };
+
+
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleTriggerPhotoUpload = () => {
+    fileInputRef.current?.click();
+  }
+
+  const handleUpdateProfilePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !session) return;
+    const file = e.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${session.user.id}_${Date.now()}.${fileExt}`;
+
+    setLoading(true);
+    try {
+      await supabase.storage.from('avatars').upload(fileName, file, { upsert: true });
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+      // Update URL with timestamp or unique name to force refresh
+      const finalUrl = publicUrl;
+
+      const { error } = await supabase.from('profiles').update({ avatar_url: finalUrl }).eq('id', session.user.id);
+
+      if (error) throw error;
+
+      // Update local state
+      if (userRole === 'discipulador' && activeDiscipleship) {
+        setActiveDiscipleship({ ...activeDiscipleship, discipuladorPhoto: finalUrl });
+      } else if (userRole === 'pastor' && pastorProfile) {
+        setPastorProfile({ ...pastorProfile, photo: finalUrl });
+      }
+
+    } catch (error: any) {
+      console.error('Error uploading photo:', error);
+      alert('Erro ao atualizar foto: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1003,9 +1046,15 @@ ${leaderLines}
         {view === AppView.PASTOR_DASHBOARD && (
           <div className="pt-20 animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h1 className="text-2xl font-black tracking-tight">Visão Pastoral</h1>
-                <p className="text-xs font-bold uppercase tracking-widest opacity-60">Supervisão Geral</p>
+              <div className="flex items-center gap-3">
+                <div onClick={handleTriggerPhotoUpload} className="w-14 h-14 rounded-2xl overflow-hidden shadow-lg border-2 border-white dark:border-gray-800 cursor-pointer hover:opacity-80 transition-opacity bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center relative group">
+                  {pastorProfile?.photo ? <img src={pastorProfile.photo} className="w-full h-full object-cover" /> : <div className="text-indigo-500"><Icons.User /></div>}
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Icons.Edit /></div>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black tracking-tight">Visão Pastoral</h1>
+                  <p className="text-xs font-bold uppercase tracking-widest opacity-60">Supervisão Geral</p>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setView(AppView.RANKING)} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all text-indigo-500">🏆</button>
@@ -1155,8 +1204,9 @@ ${leaderLines}
             {/* Cabeçalho */}
             <div className="flex justify-between items-center mb-10">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-lg border-2 border-white dark:border-gray-800">
+                <div onClick={handleTriggerPhotoUpload} className="w-12 h-12 rounded-2xl overflow-hidden shadow-lg border-2 border-white dark:border-gray-800 cursor-pointer hover:opacity-80 transition-opacity relative group">
                   {activeDiscipleship.discipuladorPhoto ? <img src={activeDiscipleship.discipuladorPhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500"><Icons.User /></div>}
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Icons.Edit /></div>
                 </div>
                 <div>
                   <h1 className="text-lg font-black leading-tight tracking-tight">Dashboard</h1>
@@ -1660,8 +1710,11 @@ ${leaderLines}
           </div>
         </div>
       )}
-    </div>
 
+      {/* Hidden File Input for Profile Photo Update */}
+      <input type="file" ref={fileInputRef} accept="image/*" onChange={handleUpdateProfilePhoto} className="hidden" style={{ display: 'none' }} />
+
+    </div>
   );
 };
 
