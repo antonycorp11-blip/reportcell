@@ -1,11 +1,11 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Relatório de Célula</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatório de Célula</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <script type="importmap">
 {
   "imports": {
@@ -15,10 +15,16 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4F46E5">
+  <link rel="apple-touch-icon" href="/icon-512.png">
+  <link rel="stylesheet" href="/index.css">
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 </head>
-  <body class="bg-gray-100 dark:bg-gray-900 transition-colors duration-200">
-    <div id="root"></div>
+
+<body class="bg-gray-100 dark:bg-gray-900 transition-colors duration-200">
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>
