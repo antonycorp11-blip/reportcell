@@ -69,6 +69,10 @@ const App: React.FC = () => {
   const [isLinkDiscipleModalOpen, setIsLinkDiscipleModalOpen] = useState(false); // Modal vincular discipulo
   const [availableDiscipleships, setAvailableDiscipleships] = useState<Discipleship[]>([]); // Lista para vincular
 
+  // Modal de Exclusão de Relatório
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [currentDeleteLeader, setCurrentDeleteLeader] = useState<Leader | null>(null);
+
   const [pinModalOpen, setPinModalOpen] = useState(false); // Modal de senha do lider
   const [pinInput, setPinInput] = useState(['', '', '', '']); // 4 digitos
   const [pendingDiscipleship, setPendingDiscipleship] = useState<Discipleship | null>(null); // Discipulado aguardando senha
@@ -255,6 +259,17 @@ const App: React.FC = () => {
       fetchRanking();
     }
   }, [view, selectedWeek, rankingMode]);
+
+  // --- Data Fetching ---
+  const fetchMyDisciples = async (pastorId: string) => {
+    const { data } = await supabase.from('profiles').select('*').eq('role', 'discipulador'); // Simples, depois filtra por rede se tiver
+    // Na v1, pastor vê todos discipuladores. Na v2, filtrar por rede.
+    if (data) setMyDisciples(data.map((d: any) => ({
+      id: d.id, name: d.name, discipleshipName: d.discipleship_name,
+      photo: d.avatar_url, themeColor: d.theme_color,
+      discipuladorName: d.name, discipuladorPhoto: d.avatar_url // Map user fields
+    })));
+  };
 
   const fetchUserProfile = async (userId: string) => {
     setLoading(true);
@@ -1240,12 +1255,9 @@ ${leaderLines}
                       </div>
                     </div>
                     {session && (
-                      <div className="flex gap-2 ml-2 items-center">
+                      <div className="flex gap-2 ml-2">
                         <button onClick={() => openGoalModal(l)} className="p-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl text-indigo-500 hover:bg-indigo-100 transition-colors"><Icons.Goal /></button>
-                        <div className="flex flex-col gap-1">
-                          <button onClick={() => clearReport(l.id, selectedWeek.id, 'cell')} title="Limpar Célula" className="px-2 py-1 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 transition-colors text-[10px] font-bold text-red-500 uppercase tracking-tighter">Limpar Cél</button>
-                          <button onClick={() => clearReport(l.id, selectedWeek.id, 'worship')} title="Limpar Culto" className="px-2 py-1 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 transition-colors text-[10px] font-bold text-red-500 uppercase tracking-tighter">Limpar Culto</button>
-                        </div>
+                        <button onClick={() => { setCurrentDeleteLeader(l); setIsDeleteModalOpen(true); }} className="p-3 bg-red-50 dark:bg-red-900/10 rounded-2xl hover:bg-red-100 transition-colors text-red-500"><Icons.Trash /></button>
                       </div>
                     )}
                   </div>
@@ -1492,7 +1504,7 @@ ${leaderLines}
               <div className="flex justify-between items-center mb-8 relative z-10">
                 <div>
                   <h2 className="font-black text-2xl tracking-tighter">Definir Alvo 🎯</h2>
-                  <p className="text-xs font-bold uppercase opacity-50 tracking-widest">{currentGoalLeader?.name}</p>
+                  <p className="text-xs font-bold uppercase opacity-50 tracking-widest">{formatName(currentGoalLeader?.name || '')}</p>
                 </div>
                 <button onClick={() => setIsGoalModalOpen(false)} className="p-2 bg-gray-50 dark:bg-gray-800 rounded-full hover:bg-gray-200 transition-colors"><Icons.X /></button>
               </div>
@@ -1524,8 +1536,8 @@ ${leaderLines}
                 {allNetworkLeaders.map((l: any) => (
                   <div key={l.leader_id} className="p-4 bg-gray-50 dark:bg-black/30 rounded-2xl flex justify-between items-center">
                     <div>
-                      <p className="font-bold text-sm">{l.leader_name}</p>
-                      <p className="text-[10px] uppercase opacity-50 tracking-wide">{l.discipulador_name}</p>
+                      <p className="font-bold text-sm">{formatName(l.leader_name)}</p>
+                      <p className="text-[10px] uppercase opacity-50 tracking-wide">{formatName(l.discipulador_name)}</p>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
                   </div>
@@ -1631,7 +1643,25 @@ ${leaderLines}
         )}
 
       </div>
-    </div >
+      {/* MODAL DE EXCLUSÃO DE RELATÓRIO */}
+      {isDeleteModalOpen && currentDeleteLeader && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#111827] w-full max-w-xs rounded-[32px] p-6 shadow-2xl space-y-4">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"><Icons.Trash /></div>
+              <h3 className="font-black text-lg">Apagar Relatório?</h3>
+              <p className="text-sm opacity-60">Escolha qual dado deseja zerar de <strong>{formatName(currentDeleteLeader.name)}</strong>.</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => { clearReport(currentDeleteLeader.id, selectedWeek.id, 'cell'); setIsDeleteModalOpen(false); }} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl font-bold text-xs uppercase tracking-wider">Célula</button>
+              <button onClick={() => { clearReport(currentDeleteLeader.id, selectedWeek.id, 'worship'); setIsDeleteModalOpen(false); }} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl font-bold text-xs uppercase tracking-wider">Culto</button>
+            </div>
+            <button onClick={() => setIsDeleteModalOpen(false)} className="w-full py-3 text-red-500 font-bold text-xs uppercase">Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+
   );
 };
 
