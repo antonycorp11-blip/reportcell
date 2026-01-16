@@ -13,7 +13,8 @@ const COLOR_PALETTES = [
 ];
 
 // Helper de formatação de nome (Capitalize)
-const formatName = (name: string) => {
+const formatName = (name: string | null | undefined) => {
+  if (!name) return '';
   return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
