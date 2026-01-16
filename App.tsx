@@ -152,7 +152,10 @@ const App: React.FC = () => {
   const requestNotificationPermission = async (targetId: string, type: 'discipulador' | 'leader') => {
     try {
       const OneSignal = (window as any).OneSignal;
-      if (!OneSignal) return;
+      if (!OneSignal) {
+        alert("DEBUG: Biblioteca OneSignal não carregada. Tente recarregar a página.");
+        return;
+      }
 
       console.log("Solicitando permissão...");
       await OneSignal.Notifications.requestPermission();
@@ -515,7 +518,10 @@ const App: React.FC = () => {
     const wGoal = parseInt(goalForm.worship) || 0;
 
     // 1. Atualizar meta permanente no líder
-    await supabase.from('leaders').update({ goal_cell: cGoal, goal_worship: wGoal }).eq('id', currentGoalLeader.id);
+    const { error: updateError } = await supabase.from('leaders').update({ goal_cell: cGoal, goal_worship: wGoal }).eq('id', currentGoalLeader.id);
+    if (updateError) {
+      alert("Erro ao salvar meta no banco: " + updateError.message);
+    }
 
     // 2. Atualizar ou Criar registro na semana atual
     const { data: existing } = await supabase.from('reports').select('*').eq('leader_id', currentGoalLeader.id).eq('week_id', selectedWeek.id).single();
@@ -1250,6 +1256,11 @@ ${leaderLines}
             <div className="flex items-center gap-4 mb-10">
               <IconButton onClick={() => setView(AppView.LEADER_LIST)}><Icons.ArrowLeft /></IconButton>
               <div><h1 className="text-2xl font-black tracking-tight">Olá, {currentLeader.name}</h1><p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Lançamento de Presença</p></div>
+            </div>
+
+            {/* DEBUG INFO - REMOVER DEPOIS */}
+            <div className="bg-gray-100 p-2 text-[10px] mb-4 overflow-auto hidden">
+              JSON: {JSON.stringify({ id: currentLeader.id, goals: { cell: currentLeader.goal_cell, worship: currentLeader.goal_worship }, push: currentLeader.push_token, perm: notifPermission })}
             </div>
 
             {(notifPermission !== 'granted' || !currentLeader?.push_token) && (
