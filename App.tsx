@@ -96,7 +96,7 @@ const App: React.FC = () => {
       if (session) {
         fetchUserProfile(session.user.id);
       } else {
-        if (view !== AppView.SELECTION && view !== AppView.CHOOSE_DISCIPLESHIP && view !== AppView.LEADER_LIST && view !== AppView.LEADER_DASHBOARD) {
+        if (view !== AppView.SELECTION && view !== AppView.CHOOSE_DISCIPLESHIP && view !== AppView.LEADER_LIST && view !== AppView.LEADER_DASHBOARD && view !== AppView.RANKING) {
           setView(AppView.SELECTION);
           setActiveDiscipleship(null);
         }
@@ -779,6 +779,7 @@ ${leaderLines}
                 <p className="text-xs font-bold uppercase tracking-widest opacity-60">Supervisão Geral</p>
               </div>
               <div className="flex gap-2">
+                <button onClick={() => setView(AppView.RANKING)} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all text-indigo-500">🏆</button>
                 <button onClick={() => setIsPastorExportModalOpen(true)} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all text-gray-500"><Icons.Clipboard /></button>
                 <IconButton onClick={handleLogout}><Icons.ArrowLeft /></IconButton>
               </div>
@@ -933,6 +934,7 @@ ${leaderLines}
                 </div>
               </div>
               <div className="flex gap-2">
+                <button onClick={() => setView(AppView.RANKING)} className="p-3 bg-white dark:bg-[#1f2937] rounded-full border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all">🏆</button>
                 {/* Só mostra botão de adicionar líder se for o próprio discipulador logado */}
                 {session && session.user.id === activeDiscipleship.id && (
                   <IconButton onClick={() => setIsLeadersModalOpen(true)}><Icons.Users /></IconButton>
@@ -1138,7 +1140,14 @@ ${leaderLines}
                 <h1 className="text-2xl font-black tracking-tight">Ranking Geral</h1>
                 <p className="text-xs font-bold uppercase tracking-widest opacity-60">Top da Rede</p>
               </div>
-              <IconButton onClick={() => setView(AppView.SELECTION)}><Icons.ArrowLeft /></IconButton>
+              <IconButton onClick={() => {
+                if (session) {
+                  if (userRole === 'pastor') setView(AppView.PASTOR_DASHBOARD);
+                  else setView(AppView.DISCIPLE_DASHBOARD);
+                } else {
+                  setView(AppView.SELECTION);
+                }
+              }}><Icons.ArrowLeft /></IconButton>
             </div>
 
             {/* Filtro: Semanal vs Mensal */}
