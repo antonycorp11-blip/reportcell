@@ -83,6 +83,15 @@ const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.classList.add('dark');
 
+    // Inicializar OneSignal
+    const OneSignal = (window as any).OneSignal || [];
+    OneSignal.push(() => {
+      OneSignal.init({
+        appId: "cebd1701-9209-4647-821f-b3dcf4e07565",
+        allowLocalhostAsSecureOrigin: true,
+      });
+    });
+
     // Verificar sessão atual
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -105,6 +114,29 @@ const App: React.FC = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const syncPushToken = async (userId: string) => {
+    try {
+      const OneSignal = (window as any).OneSignal;
+      if (!OneSignal) return;
+
+      // Solicitar permissão (navegador mostrará o prompt)
+      // Nas versões novas o OneSignal gerencia isso, mas podemos forçar
+      await OneSignal.Notifications.requestPermission();
+
+      // Pegar o ID da inscrição
+      const pushId = OneSignal.User.PushSubscription.id;
+      if (pushId) {
+        await supabase
+          .from('profiles')
+          .update({ push_token: pushId })
+          .eq('id', userId);
+        console.log("Push Token sincronizado:", pushId);
+      }
+    } catch (err) {
+      console.warn("OneSignal não pronto ou erro:", err);
+    }
+  };
 
   useEffect(() => {
     if (activeDiscipleship && userRole !== 'pastor') { // Se for pastor, carregamos de forma diferente
@@ -137,6 +169,9 @@ const App: React.FC = () => {
     if (data) {
       const role = data.role as 'pastor' | 'discipulador';
       setUserRole(role);
+
+      // Sincronizar token de notificação
+      syncPushToken(userId);
 
       if (role === 'pastor') {
         fetchPastorData(userId);
@@ -1068,7 +1103,21 @@ ${leaderLines}
             <div className="flex items-center gap-4 mb-10"><IconButton onClick={() => setView(session ? AppView.DISCIPLE_DASHBOARD : AppView.CHOOSE_DISCIPLESHIP)}><Icons.ArrowLeft /></IconButton><h1 className="text-2xl font-black tracking-tight">Qual o seu nome?</h1></div>
             <div className="space-y-3">
               {leaders.map(l => (
-                <button key={l.id} onClick={() => { setCurrentLeader(l); setView(AppView.LEADER_DASHBOARD); }} className="w-full p-6 bg-white dark:bg-[#111827] rounded-3xl border border-gray-100 dark:border-gray-800 flex justify-between items-center hover:shadow-xl transition-all group">
+                <button key={l.id} onClick={async () => {
+                  setCurrentLeader(l);
+                  setView(AppView.LEADER_DASHBOARD);
+                  // Sincronizar token do líder
+                  try {
+                    const OneSignal = (window as any).OneSignal;
+                    if (OneSignal) {
+                      await OneSignal.Notifications.requestPermission();
+                      const pushId = OneSignal.User.PushSubscription.id;
+                      if (pushId) {
+                        await supabase.from('leaders').update({ push_token: pushId }).eq('id', l.id);
+                      }
+                    }
+                  } catch (e) { }
+                }} className="w-full p-6 bg-white dark:bg-[#111827] rounded-3xl border border-gray-100 dark:border-gray-800 flex justify-between items-center hover:shadow-xl transition-all group">
                   <span className="font-bold text-lg">{l.name}</span><div className="p-3 rounded-2xl bg-gray-50 dark:bg-gray-900 group-hover:bg-indigo-500 group-hover:text-white transition-all"><Icons.ChevronRight /></div>
                 </button>
               ))}
