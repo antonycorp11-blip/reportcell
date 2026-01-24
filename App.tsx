@@ -989,7 +989,7 @@ ${leaderLines}
               </button>
             </div>
 
-            <p className="mt-8 text-xs opacity-40">Versão 2.0 • Com Integração Pastoral</p>
+            <p className="mt-8 text-xs opacity-40">Versão 2.1 • Ciclo Fixo (Seg-Dom)</p>
           </div>
         )}
 

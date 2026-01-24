@@ -135,7 +135,10 @@ const generateWeeks = (numberOfWeeks: number = 52) => {
     const range = `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
 
     weeks.push({
-      id: `w${i + 1}`,
+      // ID AJUSTADO: w0, w1, w2...
+      // Isso faz com que a Semana 2 (12/01, index 1) tenha ID 'w1', recuperando os dados antigos.
+      // A Semana 1 (05/01, index 0) terá ID 'w0' (sem dados antigos, o que é correto).
+      id: `w${i}`,
       n: i + 1,
       range,
       label: `Semana ${i + 1}`,
