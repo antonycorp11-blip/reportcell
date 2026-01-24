@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AppView, Leader, Report, Settings, Discipleship } from './types';
-import { Icons, WEEKS, MONTHS } from './constants';
+import { Icons, WEEKS, MONTHS, CURRENT_WEEK } from './constants';
 import { supabase } from './supabaseClient';
 
 const COLOR_PALETTES = [
@@ -34,7 +34,7 @@ const App: React.FC = () => {
   const [publicDiscipleships, setPublicDiscipleships] = useState<Discipleship[]>([]);
   const [activeDiscipleship, setActiveDiscipleship] = useState<Discipleship | null>(null);
   const [pastorProfile, setPastorProfile] = useState<{ name: string, photo: string, id: string } | null>(null);
-  const [selectedWeek, setSelectedWeek] = useState<any>(WEEKS[0]);
+  const [selectedWeek, setSelectedWeek] = useState<any>(CURRENT_WEEK);
   const [isWeekSelectorOpen, setIsWeekSelectorOpen] = useState(false);
 
   const [leaders, setLeaders] = useState<Leader[]>([]);
@@ -971,6 +971,7 @@ ${leaderLines}
             <h1 className="text-4xl font-black mb-2 tracking-tight">Célula Report</h1>
             <p className="text-gray-500 dark:text-gray-400 mb-12 font-medium">Gestão estratégica da igreja.</p>
 
+
             <div className="w-full space-y-4">
               <button onClick={() => { setUserRole('pastor'); setView(AppView.LOGIN); }} className="w-full p-6 bg-indigo-600 text-white rounded-3xl font-black hover:shadow-xl hover:scale-105 transition-all text-xl shadow-indigo-500/30">
                 SOU PASTOR
@@ -1405,6 +1406,30 @@ ${leaderLines}
             <div className="flex items-center gap-4 mb-10">
               <IconButton onClick={() => setView(AppView.LEADER_LIST)}><Icons.ArrowLeft /></IconButton>
               <div><h1 className="text-2xl font-black tracking-tight">Olá, {currentLeader.name}</h1><p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Lançamento de Presença</p></div>
+            </div>
+
+            {/* Seletor Semana (Adicionado) */}
+            <div className="bg-white dark:bg-[#111827] rounded-3xl p-5 border border-gray-200 dark:border-gray-800 mb-6 shadow-sm">
+              <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsWeekSelectorOpen(!isWeekSelectorOpen)}>
+                <div><p className="text-[10px] font-bold uppercase tracking-widest mb-1 opacity-60">PERÍODO ATUAL</p><h2 className="font-bold text-lg">{selectedWeek.label}</h2></div>
+                <div className="p-2 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">{isWeekSelectorOpen ? <Icons.ChevronUp /> : <Icons.ChevronDown />}</div>
+              </div>
+              {isWeekSelectorOpen && (
+                <div className="mt-6 space-y-6 animate-in slide-in-from-top-2">
+                  {MONTHS.map(m => (
+                    <div key={m.name}>
+                      <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 border-b border-gray-100 dark:border-gray-800 pb-2">{m.name}</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        {m.weeks.map(w => (
+                          <button key={w.id} onClick={() => { setSelectedWeek({ ...w, label: `Semana ${w.n} de ${m.name.split(' ')[0]}`, month: m.name }); setIsWeekSelectorOpen(false); }} style={{ backgroundColor: selectedWeek.id === w.id ? `${activePalette.primary}15` : undefined, borderColor: selectedWeek.id === w.id ? activePalette.primary : undefined, color: selectedWeek.id === w.id ? activePalette.primary : undefined }} className={`p-3 rounded-2xl border flex flex-col items-center transition-all ${selectedWeek.id !== w.id ? 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-400' : ''}`}>
+                            <span className="text-[10px] font-bold uppercase">Semana {w.n}</span><span className="text-xs font-black">{w.range}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* DEBUG INFO - REMOVER DEPOIS */}

@@ -116,14 +116,16 @@ const getMonthName = (monthIndex: number): string => {
 };
 
 // Função para gerar semanas dinamicamente
-const generateWeeks = (numberOfWeeks: number = 12) => {
-  const today = new Date();
-  const currentSunday = getSundayOfWeek(today);
+const generateWeeks = (numberOfWeeks: number = 52) => {
+  // DATA FIXA DE INÍCIO: 05 de Janeiro de 2026 (Segunda-feira)
+  // Ciclo Segunda a Domingo
+  const anchorDate = new Date(2026, 0, 5);
+
   const weeks: any[] = [];
 
   for (let i = 0; i < numberOfWeeks; i++) {
-    const weekStart = new Date(currentSunday);
-    weekStart.setDate(currentSunday.getDate() + (i * 7));
+    const weekStart = new Date(anchorDate);
+    weekStart.setDate(anchorDate.getDate() + (i * 7));
 
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
@@ -173,9 +175,13 @@ const groupWeeksByMonth = (weeks: any[]) => {
   return Object.values(grouped);
 };
 
-// Gerar semanas automaticamente (12 semanas = ~3 meses)
-const allWeeks = generateWeeks(12);
+// Gerar semanas para o ano todo (fixo a partir de 11/01/26)
+const allWeeks = generateWeeks(52);
 export const MONTHS = groupWeeksByMonth(allWeeks);
 
 // Semana atual como padrão
 export const WEEKS: any[] = allWeeks;
+
+// Helper para encontrar a semana atual baseada na data de hoje
+const today = new Date();
+export const CURRENT_WEEK = allWeeks.find(w => today >= w.startDate && today <= w.endDate) || allWeeks[0];
