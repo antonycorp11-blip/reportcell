@@ -1,20 +1,29 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 🌱 Terra Viva
 
-# Run and deploy your AI Studio app
+Simulador de fazenda **3D em primeira pessoa**, com progressão incremental. Roda no navegador, foi feito pensando primeiro no celular e funciona também no PC.
 
-This contains everything you need to run your app locally.
+## Como rodar
+```bash
+npm install
+npm run dev      # desenvolvimento (abre na rede local para testar no celular)
+npm run build    # gera dist/ para deploy (Vercel/Netlify)
+```
 
-View your app in AI Studio: https://ai.studio/apps/drive/1By3SOoSLECUfk-rr2POSJ1vKapZQ6Mh3
+## Ciclo de jogo
+Arar → Plantar → Regar → Colher → Vender → Investir (terras, máquinas, automação)
 
-## Run Locally
+- **5 eras:** Manual → Motorizada (trator) → Industrial (moinho/prensa) → Automação (drones) → Tecnológica (Legado)
+- **6 culturas:** trigo, milho, girassol, abóbora, morango, lavanda
+- **Solo vivo:** água e fertilidade em cada canteiro; rotação de culturas aumenta a fertilidade
+- **Combos de colheita** com bônus em XP e dinheiro
+- **Mercado dinâmico** com preços que oscilam e pedidos especiais com bônus
+- **Cadeias de produção:** trigo vira farinha, girassol vira óleo
+- **Automação:** aspersores, drones que colhem, plantio automático, caminhão de vendas e ganhos offline
+- **Prestígio "Legado da Terra":** dá bônus permanentes
+- **Visual que evolui:** a grama fica mais verde, aparecem flores, pássaros e borboletas conforme você progride; ciclo de dia e noite e chuva
 
-**Prerequisites:**  Node.js
+## Controles
+- **Celular:** joystick à esquerda para andar · arrastar à direita para olhar · botão grande usa a ferramenta (segure para repetir) · botão verde para interagir
+- **PC:** WASD · mouse · clique · E · 1-5 · C (semente) · Shift · B (loja) · M (mercado)
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Feito com Three.js + TypeScript + Vite. Todos os modelos 3D são gerados por código.

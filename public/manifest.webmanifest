@@ -1,0 +1,11 @@
+{
+  "name": "Terra Viva",
+  "short_name": "Terra Viva",
+  "description": "Simulador de fazenda 3D em primeira pessoa com progressão incremental.",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#2f5e2a",
+  "theme_color": "#2f5e2a",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
