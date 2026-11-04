@@ -249,3 +249,14 @@ body.isNight #crosshair { border-color: #ff6a5a; }
 #playBtn { background: linear-gradient(#b8ff8a, #4fae3a); color: #133a0a; box-shadow: 0 6px 0 #2d6e1f, 0 14px 30px rgba(0,0,0,0.35); }
 @media (orientation: portrait) { #btnNight { top: calc(126px + var(--st)); } }
 @media (max-height: 400px) { #btnNight { top: calc(62px + var(--st)); font-size: 0.75em; } }
+
+/* ---------------- Prévia das ondas / construção ---------------- */
+#wavePreview { position: absolute; left: calc(8px + var(--sl)); bottom: calc(8px + var(--sb)); max-width: min(34em, 40vw); background: rgba(25, 15, 10, 0.78); color: #fff; border-radius: 14px; padding: 0.5em 0.8em; font-size: 0.78em; line-height: 1.45; box-shadow: 0 4px 14px rgba(0,0,0,0.3); border: 1px solid rgba(255,90,60,0.5); }
+#wavePreview .ptitle { font-weight: 700; color: #ffb59a; }
+#wavePreview .new { color: #ffe35a; animation: pulse 1s infinite; display: inline-block; }
+#wavePreview .pk { opacity: 0.9; }
+#wavePreview .pmod { color: #ff8a7a; font-weight: 600; }
+body.touch #wavePreview { left: 50%; transform: translateX(-50%); bottom: auto; top: calc(124px + var(--st)); max-width: 60vw; text-align: center; font-size: 0.72em; padding: 0.35em 0.7em; }
+.crop.wide { width: auto; min-width: 3.4em; padding: 0 0.5em; }
+@media (max-height: 400px) { body.touch #wavePreview { top: calc(96px + var(--st)); } }
+@media (orientation: portrait) { body.touch #wavePreview { top: calc(166px + var(--st)); max-width: 92vw; } }

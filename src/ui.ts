@@ -5,6 +5,7 @@ import { price, trend } from './economy';
 import { PARCELS, owned } from './farm';
 import { parcelPrice, parcelLevel } from './world';
 import { SKILLS, SKMAP, BRANCHES, freePoints, lockReason } from './skills';
+import { WALLS } from './walls';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -15,7 +16,7 @@ export interface Handlers {
   open(): void; close(): void;
   setting(k: string, v: unknown): void; reset(): void; fullscreen(): void;
   learn(id: string): void; toggleCam(): void;
-  startNight(): void; restart(): void;
+  startNight(): void; restart(): void; wall(i: number): void;
 }
 let H: Handlers;
 let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' = '';
@@ -262,6 +263,14 @@ export function setPhase(phase: 'day' | 'night', n: number, left: number, zombie
   $('btnNight').classList.toggle('hidden', night);
 }
 
+export function setPreview(html: string) {
+  const el = $('wavePreview');
+  if (el.dataset.h === html) return;
+  el.dataset.h = html;
+  el.innerHTML = html;
+  el.classList.toggle('hidden', !html);
+}
+
 export function setVitals(hp: number, base: number) {
   ($('hpBar') as HTMLElement).style.width = Math.max(0, hp) * 100 + '%';
   ($('baseBar') as HTMLElement).style.width = Math.max(0, base) * 100 + '%';
@@ -289,27 +298,38 @@ export function setClock(dayTime: number, day: number, raining: boolean) {
 let toolKey = '';
 export function renderToolbar(inTractor: boolean) {
   const s = game.s;
-  const list = inTractor ? IMPLEMENTS : HAND_TOOLS.filter((_, i) => i !== 5 || lv('multi'));
+  const list = (inTractor ? IMPLEMENTS : HAND_TOOLS).map((t, i) => ({ ...t, i })).filter((t) => inTractor || t.i !== 5 || lv('multi'));
   const sel = inTractor ? s.implement : s.tool;
   const key = `${inTractor}|${sel}|${list.length}`;
   if (key !== toolKey) {
     toolKey = key;
     const tb = $('toolbar');
-    tb.innerHTML = list.map((t, i) => `<button class="slot ${i === sel ? 'on' : ''}" data-i="${i}"><span class="ti">${t.icon}</span><span class="tn">${t.name}</span><span class="tk">${i + 1}</span></button>`).join('');
+    tb.innerHTML = list.map((t) => `<button class="slot ${t.i === sel ? 'on' : ''}" data-i="${t.i}"><span class="ti">${t.icon}</span><span class="tn">${t.name}</span><span class="tk">${t.i + 1}</span></button>`).join('');
     tb.querySelectorAll('button').forEach((b) => tap(b as HTMLElement, () => H.tool(Number((b as HTMLElement).dataset.i))));
   }
   renderCropbar(inTractor);
 }
 
 let cropKey = '';
-export function renderCropbar(inTractor: boolean) {
+let lastWall = 0;
+export function renderCropbar(inTractor: boolean, wallSel = lastWall) {
   const s = game.s;
-  const show = inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 5;
+  lastWall = wallSel;
+  const building = !inTractor && s.tool === 6;
+  const show = building || (inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 5);
   const cb = $('cropbar');
   cb.classList.toggle('hidden', !show);
-  const key = `${show}|${s.crop}|${s.level}`;
+  const key = `${show}|${building}|${s.crop}|${s.level}|${wallSel}`;
   if (!show || key === cropKey) return;
   cropKey = key;
+  if (building) {
+    cb.innerHTML = WALLS.map((w, i) => {
+      const lock = s.level < w.level;
+      return `<button class="crop wide ${i === wallSel ? 'on' : ''} ${lock ? 'locked' : ''}" data-i="${i}" ${lock ? 'disabled' : ''}><span>${lock ? '🔒' : w.icon}</span><small>${lock ? 'Nv ' + w.level : w.name + ' $' + w.cost}</small></button>`;
+    }).join('');
+    cb.querySelectorAll('button').forEach((b) => tap(b as HTMLElement, () => H.wall(Number((b as HTMLElement).dataset.i))));
+    return;
+  }
   cb.innerHTML = CROPS.map((c, i) => {
     const lock = s.level < c.level;
     return `<button class="crop ${i === s.crop ? 'on' : ''} ${lock ? 'locked' : ''}" data-i="${i}" ${lock ? 'disabled' : ''}><span>${lock ? '🔒' : c.icon}</span><small>${lock ? 'Nv ' + c.level : '$' + c.seed}</small></button>`;

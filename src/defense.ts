@@ -26,7 +26,10 @@ export class Defense {
   private projs: Proj[] = [];
   private pm: THREE.InstancedMesh[] = [];
   private beams: Beam[] = [];
-  private eyes: THREE.InstancedMesh;
+  aimX = new Float32Array(N);
+  aimZ = new Float32Array(N);
+  hasAim = new Uint8Array(N);
+  charge = new Float32Array(N);
   private auraT = 0;
   private m4 = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -51,15 +54,6 @@ export class Defense {
       l.frustumCulled = false; l.visible = false;
       scene.add(l); this.beams.push({ line: l, life: 0 });
     }
-    // olhos das plantas vivas
-    const eg = merge([
-      part(ico(0.065, 1), 0xfff6c0, [-0.08, 0, 0]), part(ico(0.065, 1), 0xfff6c0, [0.08, 0, 0]),
-      part(box(0.045, 0.06, 0.03), 0x111111, [-0.08, -0.005, -0.055]), part(box(0.045, 0.06, 0.03), 0x111111, [0.08, -0.005, -0.055]),
-      part(box(0.09, 0.02, 0.02), 0x1a2a0a, [-0.08, 0.075, -0.05], [0, 0, -0.4]), part(box(0.09, 0.02, 0.02), 0x1a2a0a, [0.08, 0.075, -0.05], [0, 0, 0.4]),
-    ]);
-    this.eyes = new THREE.InstancedMesh(eg, new THREE.MeshBasicMaterial({ vertexColors: true }), N);
-    this.eyes.count = 0; this.eyes.frustumCulled = false;
-    scene.add(this.eyes);
   }
 
   dmgMult(t: number) { return (1 + 0.15 * lv('rage')) * Math.max(0.7, T.f[t]); }
@@ -80,24 +74,18 @@ export class Defense {
     const H = this.horde;
     const any = night && H.alive() > 0;
     let pulsing = false;
-    let ne = 0;
     this.auraT -= dt;
     const doAura = this.auraT <= 0;
     if (doAura) this.auraT = 0.25;
     for (let t = 0; t < N; t++) {
       if (T.p[t] !== 0) { T.p[t] = T.p[t] > 0 ? Math.max(0, T.p[t] - dt * 4) : Math.min(0, T.p[t] + dt * 2); pulsing = true; }
-      if (!night || T.s[t] !== 2 || T.g[t] < 1 || !owned[(t / 100) | 0]) continue;
+      this.hasAim[t] = 0;
+      if (!night || T.s[t] !== 2 || T.g[t] < 1 || !owned[(t / 100) | 0] || T.a[t] < 0.6) { this.charge[t] = 0; continue; }
       const c = T.c[t]; const d = DEF[c];
       const x = tileX(t), z = tileZ(t);
-      // olhos olhando para o zumbi mais próximo
       let look: Zombie | null = null;
-      if (any) look = H.nearest(x, z, Math.max(d.range, 10));
-      if (camPos.distanceToSquared(this.v.set(x, 0, z)) < 4900 && ne < N) {
-        const yaw = look ? Math.atan2(-(look.g.position.x - x), -(look.g.position.z - z)) : 0;
-        this.q.setFromAxisAngle(this.up, yaw);
-        this.m4.compose(this.v.set(x, d.eyeY + (c === 2 ? 0.05 : 0) + Math.max(0, T.p[t]) * 0.15, z), this.q, this.s1);
-        this.eyes.setMatrixAt(ne++, this.m4);
-      }
+      if (any) look = H.nearest(x, z, Math.max(d.range, 10), c !== 0 && c !== 3 && c !== 4);
+      if (look) { this.hasAim[t] = 1; this.aimX[t] = look.g.position.x; this.aimZ[t] = look.g.position.z; }
       if (!any) continue;
       this.cd[t] -= dt;
       const m = this.dmgMult(t);
@@ -139,8 +127,12 @@ export class Defense {
           break;
         }
         case 'bomb': {
-          const zb = H.nearest(x, z, d.range, false, true);
-          if (!zb) break;
+          const zb = H.nearest(x, z, 4.2, false, true);
+          if (!zb) { this.charge[t] = Math.max(0, this.charge[t] - dt); break; }
+          this.charge[t] += dt * 1.8;
+          const close = (zb.g.position.x - x) ** 2 + (zb.g.position.z - z) ** 2 < 2.2;
+          if (this.charge[t] < 1 && !close) break;
+          this.charge[t] = 0;
           H.each(x, z, 4.5, (o) => { if (H.hit(o, d.dmg * m, { ignoreBurrow: true, knock: this.v.set(o.g.position.x - x, 0, o.g.position.z - z).normalize().multiplyScalar(8) })) this.ctx.kill(o, 'plant'); }, true);
           this.ctx.boom(x, z);
           T.s[t] = 3; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0;
@@ -156,8 +148,6 @@ export class Defense {
         }
       }
     }
-    this.eyes.count = ne;
-    this.eyes.instanceMatrix.needsUpdate = true;
     if (pulsing) farm.markDirty();
     this.updateProjs(dt);
     for (const b of this.beams) {

@@ -16,8 +16,13 @@ import { uTime } from './gfx';
 import * as ui from './ui';
 import { Life } from './life';
 import { learn, SKMAP } from './skills';
-import { Horde, ZDEF, type Zombie, type ZKind } from './zombies';
+import { Horde, ZDEF, eyeMat as zEyeMat, type Zombie, type ZKind } from './zombies';
 import { Defense } from './defense';
+import { LaneView, LMAP, lanesFor } from './lanes';
+import { Creatures } from './creatures';
+import { Walls, WALLS } from './walls';
+import { rng } from './gfx';
+import { colliders } from './physics';
 import { DAY_LEN, baseMax, playerMax, addXp } from './state';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -57,13 +62,22 @@ const life = new Life(scene, fx);
 life.onUnlock = (name) => { if (playing) { ui.banner('✨ A fazenda evoluiu!', name); sfx.level(); } };
 const horde = new Horde(scene, fx);
 const defense = new Defense(scene, horde, fx);
+const laneView = new LaneView(scene);
+const creatures = new Creatures(scene, fx, high);
+creatures.aim = (t) => (defense.hasAim[t] ? { x: defense.aimX[t], z: defense.aimZ[t] } : null);
+creatures.charge = defense.charge;
+const walls = new Walls(scene, fx);
+let buildType = 0;
+interface WaveEntry { kind: ZKind; lane: string }
+let plan: { list: WaveEntry[]; mod: string | null; counts: Record<string, number>; kinds: Record<string, number> } = { list: [], mod: null, counts: {}, kinds: {} };
+let nightMod: string | null = null, baseAtDusk = 0;
 defense.ctx = {
   kill: (z, by) => onKill(z, by),
   boom: (x, z) => boom(x, z),
   shot: (k) => { if (shotT <= 0) { shotT = 0.07; sfx.shoot(k); } },
 };
 let playerHp = 100, hurtT = 10, deadT = 0, over = false, shotT = 0, baseAlertT = 0, groanT = 3, shake = 0;
-let spawnQueue: ZKind[] = [], spawnT = 0, waveTotal = 0, visDay = 0.05;
+let spawnQueue: WaveEntry[] = [], spawnT = 0, waveTotal = 0, visDay = 0.05;
 
 // ------------------------------------------------------------------ estado inicial
 function applyState() {
@@ -80,6 +94,8 @@ function applyState() {
   playerHp = playerMax();
   if (s.phase === 'night') { s.phase = 'day'; s.phaseT = 20; }
   horde.clear(); defense.reset();
+  walls.load(s.walls);
+  planNext();
   player.setTool(s.tool);
   if (s.inTractor && !lv('tractor')) s.inTractor = false;
   player.showTool(!s.inTractor);
@@ -92,6 +108,7 @@ function applyState() {
 function doSave() {
   if (wiped) return;
   s.px = player.pos.x; s.pz = player.pos.z; s.yaw = player.yaw;
+  s.walls = walls.serialize();
   s.tx = tractor.group.position.x; s.tz = tractor.group.position.z; s.tyaw = tractor.yaw;
   save(farm.serialize());
 }
@@ -219,6 +236,7 @@ ui.initUI({
   },
   toggleCam,
   tool: selectTool,
+  wall(i) { buildType = i; sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${fmt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
   startNight: () => startNight(),
   restart: () => restart(),
@@ -350,6 +368,7 @@ const actionSfx = [sfx.plow, sfx.plant, sfx.water, () => { /* colheita tem som p
 let cooldown = 0, canAcc = 0;
 function useHand() {
   if (s.tool === 4) { attack(); return; }
+  if (s.tool === 6) { build(); return; }
   const t0 = targetTile();
   if (t0 < 0) return;
   if (!isOwned(t0)) { ui.toast('🪧 Este terreno está à venda — compre na placa'); cooldown = 0.5; return; }
@@ -469,45 +488,70 @@ bus.on('hud', () => { hudDirty = true; });
 bus.on('order', () => { if (!offline) ui.toast('📦 Novo pedido especial no mercado!'); });
 
 // ------------------------------------------------------------------ apocalipse: ondas, combate e sobrevivência
-function buildWave(n: number): ZKind[] {
-  const total = Math.min(150, Math.round(5 + n * 3.3));
-  const out: ZKind[] = [];
+const MODS: Record<string, { name: string; desc: string }> = {
+  boss: { name: '💀 Noite do Colosso', desc: 'um chefe gigante vem pelo norte' },
+  blood: { name: '🌕 Lua de Sangue', desc: 'zumbis 30% mais rápidos · recompensa ×1,5' },
+  fog: { name: '🌫️ Neblina', desc: 'visão curta · zumbis vêm em silêncio' },
+  double: { name: '👥 Horda Dupla', desc: '60% mais zumbis · recompensa ×1,5' },
+};
+const KIND_ICON: Record<string, string> = { walker: '🧟', runner: '🏃', brute: '💪', digger: '⛏️', crow: '🐦‍⬛', colossus: '💀' };
+
+function planWave(n: number) {
+  const r = rng(n * 7919 + s.prestiges * 131 + 7);
+  const lanes = lanesFor(n);
+  const mod = n % 5 === 0 ? 'boss' : n % 4 === 0 ? 'blood' : n % 6 === 3 ? 'fog' : n >= 6 && n % 7 === 6 ? 'double' : null;
+  const total = Math.min(170, Math.round((5 + n * 3.3) * (mod === 'double' ? 1.6 : 1)));
+  const list: WaveEntry[] = [];
+  const newest = lanes[lanes.length - 1];
   for (let i = 0; i < total; i++) {
-    const r = Math.random();
-    let k: ZKind = 'walker';
-    if (n >= 2 && r < 0.2) k = 'runner';
-    else if (n >= 3 && r < 0.3) k = 'brute';
-    else if (n >= 4 && r < 0.4) k = 'digger';
-    else if (n >= 5 && r < 0.5) k = 'crow';
-    out.push(k);
+    const v = r();
+    let kind: ZKind = 'walker';
+    if (n >= 2 && v < 0.2) kind = 'runner';
+    else if (n >= 3 && v < 0.3) kind = 'brute';
+    else if (n >= 4 && v < 0.4) kind = 'digger';
+    else if (n >= 5 && v < 0.5) kind = 'crow';
+    // rota nova recebe parte maior na noite em que abre
+    const lane = newest.unlock === n && r() < 0.5 ? newest : lanes[Math.floor(r() * lanes.length)];
+    list.push({ kind, lane: lane.id });
   }
-  if (n % 5 === 0) for (let b = 0; b < n / 5; b++) out.splice(Math.floor(total * (0.5 + b * 0.1)), 0, 'colossus');
-  return out;
+  if (mod === 'boss') for (let b = 0; b < n / 5; b++) list.splice(Math.floor(total * (0.5 + b * 0.1)), 0, { kind: 'colossus', lane: 'n1' });
+  const counts: Record<string, number> = {}, kinds: Record<string, number> = {};
+  for (const e of list) { counts[e.lane] = (counts[e.lane] || 0) + 1; kinds[e.kind] = (kinds[e.kind] || 0) + 1; }
+  return { list, mod, counts, kinds };
 }
 
-function spawnOne(kind: ZKind) {
+function planNext() {
   const n = s.nights + 1;
-  const edges = ['n'];
-  if (n >= 3) edges.push('e', 'w');
-  if (n >= 6) edges.push('s');
-  const e = kind === 'colossus' ? 'n' : edges[(Math.random() * edges.length) | 0];
-  let x = 0, z = 0;
-  if (e === 'n') { x = -40 + Math.random() * 80; z = -93; }
-  else if (e === 'e') { x = 91; z = -70 + Math.random() * 90; }
-  else if (e === 'w') { x = -91; z = -70 + Math.random() * 90; }
-  else { x = -6 + Math.random() * 12; z = 59; }
-  horde.spawn(kind, x, z, 1 + 0.13 * (n - 1));
+  plan = planWave(n);
+  laneView.set(plan.counts, false);
+  const lanes = Object.keys(plan.counts).map((id) => `${LMAP[id].arrow} ${LMAP[id].name} <b>${plan.counts[id]}</b>`).join(' · ');
+  const kinds = Object.keys(plan.kinds).map((k) => `${KIND_ICON[k]}${plan.kinds[k]}`).join(' ');
+  const newLane = lanesFor(n).find((l) => l.unlock === n && n > 1);
+  const mod = plan.mod ? `<div class="pmod">${MODS[plan.mod].name} — ${MODS[plan.mod].desc}</div>` : '';
+  ui.setPreview(`<div class="ptitle">📋 Próxima noite ${n}${newLane ? ` · <span class="new">NOVA ROTA: ${newLane.arrow} ${newLane.name}!</span>` : ''}</div><div>${lanes}</div><div class="pk">${kinds}</div>${mod}`);
+}
+
+function spawnOne(e: WaveEntry) {
+  const n = s.nights + 1;
+  const lane = LMAP[e.lane];
+  const [x, z] = lane.pts[0];
+  horde.spawn(e.kind, x + (Math.random() - 0.5) * 4, z + (Math.random() - 0.5) * 4, 1 + 0.13 * (n - 1), lane.pts);
 }
 
 function startNight() {
   if (s.phase === 'night' || over) return;
   s.phase = 'night';
   const n = s.nights + 1;
-  spawnQueue = buildWave(n);
+  spawnQueue = [...plan.list];
   waveTotal = spawnQueue.length;
+  nightMod = plan.mod;
+  baseAtDusk = s.baseHp;
+  laneView.set(plan.counts, true);
+  ui.setPreview('');
+  eyeTint();
   spawnT = 3;
   ui.closePanel();
-  ui.banner(`🌙 Noite ${n}`, n % 5 === 0 ? '⚠️ Um COLOSSO se aproxima!' : `${waveTotal} zumbis a caminho · suas plantas ganharam vida!`);
+  ui.banner(`🌙 Noite ${n}`, nightMod ? `${MODS[nightMod].name} · ${waveTotal} zumbis` : `${waveTotal} zumbis a caminho · suas plantas ganharam vida!`);
   sfx.night();
   hudDirty = true;
 }
@@ -516,12 +560,16 @@ function endNight() {
   s.phase = 'day';
   s.phaseT = DAY_LEN;
   s.nights++;
-  const reward = 40 + s.nights * 35;
+  const perfect = s.baseHp >= baseAtDusk - 0.5;
+  const reward = Math.round((40 + s.nights * 35) * (nightMod === 'blood' || nightMod === 'double' ? 1.5 : 1) * (perfect ? 1.5 : 1));
   earn(reward);
   addXp(10 + s.nights * 5);
   s.baseHp = Math.min(baseMax(), s.baseHp + baseMax() * 0.5);
   playerHp = playerMax();
-  ui.banner(`🌅 Você sobreviveu à noite ${s.nights}!`, `+${fmt(reward)} · casa reparada · plante para a próxima noite`);
+  ui.banner(`🌅 Você sobreviveu à noite ${s.nights}!`, `+${fmt(reward)}${perfect ? ' · 🛡️ DEFESA PERFEITA ×1,5' : ''} · veja as rotas da próxima noite`);
+  nightMod = null; eyeTint();
+  laneView.set({}, false);
+  planNext();
   sfx.level();
   horde.clear();
   doSave();
@@ -567,6 +615,11 @@ function updatePhase(dt: number) {
     }
   } else if (hurtT > 4 && playerHp < playerMax()) playerHp = Math.min(playerMax(), playerHp + dt * 8 * (1 + 0.5 * lv('medkit')));
   if (s.phase === 'night' && s.baseHp < baseMax() * 0.5 && Math.random() < dt * 4) fx.spawn(POS.house.x + (Math.random() - 0.5) * 8, 4 + Math.random() * 2, POS.house.z + (Math.random() - 0.5) * 6, Math.random() < 0.5 ? 0xff7a2a : 0x555555, 2, 1, 2, -1, 1.5);
+}
+
+function eyeTint() {
+  zEyeMat.color.set(nightMod === 'blood' ? 0xff1a1a : 0xffb02a);
+  world.fogMult = nightMod === 'fog' ? 0.4 : 1;
 }
 
 function hurtPlayer(d: number) {
@@ -662,6 +715,46 @@ function attack() {
   }
 }
 
+const buildPt = new THREE.Vector3();
+let buildOk = false, buildRot = 0;
+function buildTarget() {
+  camera.getWorldDirection(ray);
+  let d = 3.2;
+  if (ray.y < -0.08) d = Math.min(7, -camera.position.y / ray.y);
+  const fx2 = Math.hypot(ray.x, ray.z) || 1;
+  buildPt.set(Math.round(camera.position.x + (ray.x / fx2) * Math.max(2.2, d * fx2)), 0, Math.round(camera.position.z + (ray.z / fx2) * Math.max(2.2, d * fx2)));
+  buildRot = Math.round(player.yaw / (Math.PI / 2)) * (Math.PI / 2);
+  const probe = buildPt.clone();
+  let blocked = false;
+  for (const b of colliders.boxes) { if (b.on && !b.on()) continue; if (probe.x > b.x1 - 1 && probe.x < b.x2 + 1 && probe.z > b.z1 - 1 && probe.z < b.z2 + 1) blocked = true; }
+  for (const c of colliders.circles) { if (c.on && !c.on()) continue; if ((probe.x - c.x) ** 2 + (probe.z - c.z) ** 2 < (c.r + 1) ** 2) blocked = true; }
+  const other = walls.at(buildPt.x, buildPt.z, 1.6);
+  buildOk = !blocked && !other && Math.hypot(buildPt.x - player.pos.x, buildPt.z - player.pos.z) > 1.4;
+  return other;
+}
+
+function build() {
+  const other = buildTarget();
+  cooldown = 0.35;
+  if (other) {
+    const max = WALLS[other.type].hp;
+    if (other.hp >= max) { ui.toast('🧱 Já está inteira'); return; }
+    const cost = Math.ceil(WALLS[other.type].cost * 0.5 * (1 - other.hp / max));
+    if (!spend(cost)) { ui.toast(`💸 Reparo custa ${fmt(cost)}`, 'warn'); sfx.error(); return; }
+    other.hp = max; sfx.plow(); player.use();
+    ui.toast(`🔨 Reparado por ${fmt(cost)}`);
+    return;
+  }
+  const W = WALLS[buildType];
+  if (s.level < W.level) { ui.toast(`🔒 ${W.name} requer nível ${W.level}`, 'warn'); return; }
+  if (!buildOk) { ui.toast('🚫 Não dá para construir aqui', 'warn'); sfx.error(); return; }
+  if (!spend(W.cost)) { ui.toast(`💸 ${W.name} custa ${fmt(W.cost)}`, 'warn'); sfx.error(); return; }
+  walls.add(buildType, buildPt.x, buildPt.z, buildRot);
+  player.use(); sfx.plow();
+  fx.spawn(buildPt.x, 0.5, buildPt.z, 0x9a6a3c, 12, 1.5, 3, 9, 0.7);
+  s.stats.plowed += 0;
+}
+
 function gameOver() {
   if (over) return;
   over = true;
@@ -688,6 +781,7 @@ function restart() {
   applyState();
   ui.closePanel();
   if (s.inTractor) exitTractor();
+  walls.clear();
   ui.banner('🌱 Uma nova chance', `Legado ${ns.legacy} · prepare-se para a primeira noite`);
   doSave();
 }
@@ -715,7 +809,7 @@ holdButton(document.getElementById('btnInteract')!, (v) => { if (v) press('KeyE'
 holdButton(document.getElementById('btnSprint')!, (v) => { if (v) { input.sprint = !input.sprint; document.getElementById('btnSprint')!.classList.toggle('on', input.sprint); } });
 
 function handleKeys() {
-  for (let i = 0; i < 6; i++) if (consume('Digit' + (i + 1))) selectTool(i);
+  for (let i = 0; i < 7; i++) if (consume('Digit' + (i + 1))) selectTool(i);
   if (consume('KeyN')) startNight();
   if (s.inTractor && s.tpCam) {
     if (consume('WheelDown')) camDist = Math.min(20, camDist + 1.2);
@@ -723,8 +817,8 @@ function handleKeys() {
   }
   if (consume('KeyV')) toggleCam();
   if (consume('KeyK')) ui.togglePanel('skills');
-  if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : lv('multi') ? 6 : 5));
-  if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : lv('multi') ? 6 : 5; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
+  if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : 7));
+  if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : 7; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
   if (consume('KeyC')) {
     const avail = CROPS.map((c, i) => [c, i] as const).filter(([c]) => c.level <= s.level);
     const k = avail.findIndex(([, i]) => i === s.crop);
@@ -843,7 +937,8 @@ function frame(now: number) {
       cooldown -= dt;
       if (sk('m5') && s.can < canCap()) { canAcc += dt * 0.6; if (canAcc >= 1) { canAcc -= 1; s.can++; hudDirty = true; } }
       if (input.action && input.enabled && cooldown <= 0 && deadT <= 0) useHand();
-      const t0 = targetTile();
+      if (s.tool === 6) { const o = buildTarget(); walls.setGhost(o ? -1 : buildType, buildPt.x, buildPt.z, buildRot, buildOk); } else walls.setGhost(-1, 0, 0, 0, false);
+      const t0 = s.tool === 6 ? -1 : targetTile();
       if (t0 >= 0) {
         const tiles = isOwned(t0) ? farm.area(t0, lv('tool')) : [t0];
         const c = !isOwned(t0) ? 0xff6b6b : farm.isRipe(t0) ? 0xffd23f : 0xffffff;
@@ -890,11 +985,15 @@ function frame(now: number) {
     horde.update(dt, realTime, {
       player: player.pos, tractor: lv('tractor') ? tractor.group.position : null, tractorSpeed: s.inTractor ? tractor.speed : 0, camera,
       hurtPlayer, hurtBase, kill: (z) => onKill(z, 'plant'), ramHit,
+      walls, speedMult: nightMod === 'blood' ? 1.3 : 1,
     });
+    walls.update(dt, realTime, camera);
     defense.update(dt, s.phase === 'night', camera.position);
     shotT -= dt;
   }
   if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * shake * 0.6; camera.position.y += (Math.random() - 0.5) * shake * 0.6; }
+  creatures.update(dt, s.phase === 'night' && playing, realTime, camera.position);
+  laneView.update(dt, realTime);
   world.update(dt, camera.position, realTime);
   fx.update(dt);
 
@@ -920,4 +1019,4 @@ window.addEventListener('pagehide', doSave);
 window.addEventListener('beforeunload', doSave);
 
 // debug para testes
-(window as any).__tv = { game, farm, player, tractor, horde, startNight, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };
+(window as any).__tv = { game, farm, player, tractor, horde, walls, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };

@@ -3,6 +3,7 @@ import { box, mat, cone, ico } from './gfx';
 import { resolve } from './physics';
 import * as farm from './farm';
 import type { FX } from './fx';
+import type { Walls } from './walls';
 
 export type ZKind = 'walker' | 'runner' | 'brute' | 'digger' | 'crow' | 'colossus';
 
@@ -21,6 +22,7 @@ export interface Zombie {
   walk: number; slowT: number; slowK: number; poisonT: number; poisonD: number;
   dead: number; burrowed: boolean; mound?: THREE.Mesh; bar: THREE.Group; barFg: THREE.Mesh;
   hitT: number; ramT: number; groan: number; vx: number; vz: number; eating: boolean;
+  path: [number, number][] | null; wp: number; ox: number; oz: number;
 }
 
 const BASE = new THREE.Vector3(-17, 0, 12);
@@ -41,6 +43,7 @@ const pants = [0x3a4a5e, 0x4e3e2e, 0x2e3a2e, 0x5a4a6a];
 export interface ZCtx {
   player: THREE.Vector3; tractor: THREE.Vector3 | null; tractorSpeed: number; camera: THREE.Camera;
   hurtPlayer: (d: number) => void; hurtBase: (d: number) => void; kill: (z: Zombie) => void; ramHit: (z: Zombie) => void;
+  walls: Walls; speedMult: number;
 }
 
 export class Horde {
@@ -52,7 +55,7 @@ export class Horde {
 
   alive() { let n = 0; for (const z of this.list) if (z.dead === 0) n++; return n; }
 
-  spawn(kind: ZKind, x: number, z: number, hpMult: number) {
+  spawn(kind: ZKind, x: number, z: number, hpMult: number, path: [number, number][] | null = null) {
     const d = ZDEF[kind];
     const g = new THREE.Group();
     const body = new THREE.Group(); g.add(body);
@@ -96,6 +99,7 @@ export class Horde {
       kind, g, hp: d.hp * hpMult, max: d.hp * hpMult, speed: d.speed * (0.9 + Math.random() * 0.2), dps: d.dps * (1 + (hpMult - 1) * 0.5), reward: Math.round(d.reward * (1 + (hpMult - 1) * 0.4)),
       legs, arms, body, walk: Math.random() * 6, slowT: 0, slowK: 1, poisonT: 0, poisonD: 0, dead: 0,
       burrowed: kind === 'digger', bar, barFg: fg, hitT: 0, ramT: 0, groan: 2 + Math.random() * 8, vx: 0, vz: 0, eating: false,
+      path: kind === 'crow' ? null : path, wp: 1, ox: (Math.random() - 0.5) * 2.4, oz: (Math.random() - 0.5) * 2.4,
     };
     if (zb.burrowed) {
       body.visible = false;
@@ -164,7 +168,18 @@ export class Horde {
       const dpx = ctx.player.x - p.x, dpz = ctx.player.z - p.z;
       const dPlayer = Math.hypot(dpx, dpz);
       const chase = dPlayer < (z.kind === 'crow' ? 14 : 7) && !z.burrowed;
-      let tx = chase ? ctx.player.x : BASE.x, tz = chase ? ctx.player.z : BASE.z;
+      let tx = BASE.x, tz = BASE.z;
+      if (z.path && z.wp < z.path.length) {
+        const last = z.wp === z.path.length - 1;
+        tx = z.path[z.wp][0] + (last ? 0 : z.ox); tz = z.path[z.wp][1] + (last ? 0 : z.oz);
+        if ((tx - p.x) ** 2 + (tz - p.z) ** 2 < (last ? 0.5 : 3)) z.wp++;
+      }
+      // isca (espantalho) atrai
+      let decoy: import('./walls').Wall | null = null;
+      if (!chase && !z.burrowed && z.kind !== 'colossus') {
+        for (const w of ctx.walls.list) if (w.type === 2 && (w.x - p.x) ** 2 + (w.z - p.z) ** 2 < 81) { decoy = w; tx = w.x; tz = w.z; break; }
+      }
+      if (chase) { tx = ctx.player.x; tz = ctx.player.z; }
       // distância até a casa
       const cx = Math.max(HOUSE.x1, Math.min(p.x, HOUSE.x2)), cz = Math.max(HOUSE.z1, Math.min(p.z, HOUSE.z2));
       const dHouse = Math.hypot(p.x - cx, p.z - cz);
@@ -172,10 +187,30 @@ export class Horde {
         z.burrowed = false; z.body.visible = true; if (z.mound) z.g.remove(z.mound);
         this.fx.spawn(p.x, 0.3, p.z, 0x6b4a2a, 25, 2, 5, 9, 0.9);
       }
-      let speed = z.speed * z.slowK;
+      let speed = z.speed * z.slowK * ctx.speedMult;
       z.eating = false;
       let attacking = false;
-      if (!chase && dHouse < 0.9 * (z.kind === 'colossus' ? 2.2 : 1) + 0.5) { attacking = true; ctx.hurtBase(z.dps * dt); }
+      // barricadas
+      if (z.kind !== 'crow' && !z.burrowed) {
+        for (const w of ctx.walls.list) {
+          const dx = p.x - w.x, dz = p.z - w.z;
+          if (dx * dx + dz * dz > 6) continue;
+          const c = Math.cos(w.rot), sn = Math.sin(w.rot);
+          const lx = dx * c - dz * sn, lz = dx * sn + dz * c;
+          const sc = ZDEF[z.kind].scale;
+          if (w.type === 0 && Math.abs(lx) < 1.15 + 0.3 * sc && Math.abs(lz) < 0.55 + 0.3 * sc) { attacking = true; ctx.walls.damage(w, z.dps * dt * (z.kind === 'colossus' ? 3 : 1)); tx = w.x; tz = w.z; break; }
+          if (w.type === 2 && dx * dx + dz * dz < (0.9 + 0.4 * sc) ** 2) { attacking = true; ctx.walls.damage(w, z.dps * dt); tx = w.x; tz = w.z; break; }
+          if (w.type === 1 && Math.abs(lx) < 1.1 && Math.abs(lz) < 1.1) {
+            speed *= 0.5;
+            ctx.walls.damage(w, 5 * dt);
+            if (this.hit(z, 18 * dt, { slow: 0.5, slowT: 0.5 })) { ctx.kill(z); }
+          }
+        }
+        if (z.dead) continue;
+      }
+      void decoy;
+      if (attacking) { /* quebrando barricada */ }
+      else if (!chase && dHouse < 0.9 * (z.kind === 'colossus' ? 2.2 : 1) + 0.5) { attacking = true; ctx.hurtBase(z.dps * dt); }
       else if (chase && dPlayer < 1.2 * (z.kind === 'colossus' ? 2 : 1)) { attacking = true; ctx.hurtPlayer(z.dps * dt); }
       else if (z.kind !== 'crow' && !z.burrowed) {
         const t = farm.tileAt(p.x, p.z);

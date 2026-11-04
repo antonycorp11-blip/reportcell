@@ -118,6 +118,7 @@ export const HAND_TOOLS = [
   { name: 'Foice', icon: '🌾' },
   { name: 'Arma', icon: '🗡️' },
   { name: 'Multiuso', icon: '✨' },
+  { name: 'Construir', icon: '🧱' },
 ];
 
 export const IMPLEMENTS = [

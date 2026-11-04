@@ -30,6 +30,7 @@ export interface State {
   phaseT: number;
   nights: number;
   baseHp: number;
+  walls: { type: number; x: number; z: number; rot: number; hp: number }[];
 }
 
 export const DAY_LEN = 170;
@@ -46,7 +47,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
     skills: {}, tpCam: true,
-    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 600,
+    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 600, walls: [],
   };
 }
 

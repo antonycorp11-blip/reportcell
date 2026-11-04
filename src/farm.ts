@@ -20,6 +20,7 @@ export const T = {
   l: new Int8Array(N).fill(-1),  // última cultura
   h: new Float32Array(N),        // vida da planta
   p: new Float32Array(N),        // pulso de ataque (visual)
+  a: new Float32Array(N),        // 0 = planta, 1 = criatura viva
 };
 export const CROP_HP = [40, 70, 55, 300, 60, 90];
 export const tileMaxHp = (t: number) => CROP_HP[T.c[t]] * (0.3 + 0.7 * T.g[t]);
@@ -290,10 +291,12 @@ export class FarmView {
         const sy = 0.12 + 0.88 * g;
         const sxz = 0.35 + 0.65 * Math.min(1, g * 1.4);
         q.setFromAxisAngle(up, ((t * 7) % 4) * (Math.PI / 2));
-        const pu = T.p[t];
-        const ps = 1 + Math.max(0, pu) * 0.22;
+        const al = T.a[t];
+        if (al >= 0.999) continue;
+        const pu = al > 0 ? 0 : T.p[t];
+        const ps = (1 + Math.max(0, pu) * 0.22) * (1 - al);
         const eat = pu < 0 ? 1 + pu * 0.25 : 1;
-        m4.compose(pv.set(x, 0.1, z), q, sv.set(sxz * ps * eat, (ripe ? 1.04 : sy) * (1 + Math.max(0, pu) * 0.12) * eat, sxz * ps * eat));
+        m4.compose(pv.set(x, 0.1, z), q, sv.set(sxz * ps * eat, (ripe ? 1.04 : sy) * (1 + Math.max(0, pu) * 0.12) * eat * (1 - al), sxz * ps * eat));
         const mesh = this.crops[c];
         mesh.setMatrixAt(nc[c], m4);
         const k = Math.max(0, Math.min(1, (g - 0.45) / 0.55));

@@ -72,6 +72,8 @@ export class World {
   private grass: GrassField;
   private chimT = 0;
   sunDir = new THREE.Vector3();
+  fogMult = 1;
+  private fogK = 1;
   night = 0;
 
   constructor(scene: THREE.Scene, fx: FX, high: boolean) {
@@ -741,7 +743,8 @@ export class World {
     this.skyMat.uniforms.sunCol.value.copy(SUN_DAY).lerp(SUN_GOLD, goldF);
     this.skyMat.uniforms.sunVis.value = dayF * (1 - rf * 0.9);
     (this.scene.fog as THREE.Fog).color.copy(hor);
-    (this.scene.fog as THREE.Fog).far = (430 - rf * 200) * (1 - this.night * 0.6);
+    this.fogK += (this.fogMult - this.fogK) * Math.min(1, dt * 0.5);
+    (this.scene.fog as THREE.Fog).far = (430 - rf * 200) * (1 - this.night * 0.6) * this.fogK;
     (this.scene.fog as THREE.Fog).near = 90 * (1 - this.night * 0.6);
 
     const lightDir = el > -0.05 ? this.sunDir : new THREE.Vector3(-this.sunDir.x, -this.sunDir.y, this.sunDir.z).normalize();
