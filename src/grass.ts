@@ -28,6 +28,7 @@ export class GrassField {
     const rects = this.uRects;
     this.mat.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = uTime;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  normal = normalize(vNormal);');
       sh.uniforms.uCam = uCam;
       sh.uniforms.uRects = rects;
       sh.vertexShader = 'uniform float uTime;\nuniform vec3 uCam;\nuniform vec4 uRects[9];\n' + sh.vertexShader.replace(

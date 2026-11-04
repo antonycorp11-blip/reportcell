@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { part, merge, cone, cyl, ico, box, bx, mat, windMat, rng, fbm, heightAt, Sign, prism, dotTexture, shade, planarUV, noiseTexture } from './gfx';
 import { GrassField } from './grass';
+import { scaledOutline, addOutlines } from './gfx';
+import { windOutline } from './toon';
 import { colliders } from './physics';
 import { PARCELS, owned, setRain, tileX, tileZ, randomRipe, PN, TILE, isNextParcel } from './farm';
 import { game, vitality, lv, sk, siloUsed, siloCap, fmt } from './state';
@@ -24,7 +26,7 @@ export const parcelLevel = (n: number) => n + 1;
 export function parcelSignPos(id: number) { const p = PARCELS[id]; return new THREE.Vector3(p.x0 + 10, 0, p.z0 + 20.6); }
 
 const C = (h: number) => new THREE.Color(h);
-const DAY_TOP = C(0x5f86a8), DAY_HOR = C(0xe2b98a), NIGHT_TOP = C(0x0b1838), NIGHT_HOR = C(0x2c4664), GOLD = C(0xff8a4a), RAIN = C(0x7f8a86);
+const DAY_TOP = C(0x4f8fd0), DAY_HOR = C(0xf3c890), NIGHT_TOP = C(0x0b1838), NIGHT_HOR = C(0x2c4664), GOLD = C(0xff8a4a), RAIN = C(0x7f8a86);
 const SUN_DAY = C(0xffe6c4), SUN_GOLD = C(0xff8a4a), MOON = C(0xc4d8ff);
 const GRASS_DRY = C(0xb9ad62), GRASS_LUSH = C(0x5ea845), HILL = C(0x7a6e4c), ROCK = C(0x7d766a), SAND = C(0xd9c995), ASH = C(0x8c7d5a);
 
@@ -230,7 +232,7 @@ export class World {
   // ------------------------------------------------------------------ construção
   private buildRoads() {
     const P: THREE.BufferGeometry[] = [];
-    const dirt = 0xa98a5c, dirt2 = 0x9c7f52;
+    const dirt = 0xd4b27c, dirt2 = 0xc9a46c;
     const strip = (x1: number, z1: number, x2: number, z2: number, c = dirt) => {
       const g = new THREE.PlaneGeometry(x2 - x1, z2 - z1); g.rotateX(-Math.PI / 2);
       P.push(part(g, c, [(x1 + x2) / 2, 0.012, (z1 + z2) / 2]));
@@ -240,7 +242,7 @@ export class World {
     strip(-12, 10.5, -3, 13.5); strip(3, 10.5, 12, 13.5);
     strip(-46, -20, -38, -16); strip(38, -20, 46, -16);
     const c = new THREE.CircleGeometry(10, 28); c.rotateX(-Math.PI / 2);
-    P.push(part(c, 0xb39466, [0, 0.01, 3]));
+    P.push(part(c, 0xdcbc88, [0, 0.01, 3]));
     const rg = planarUV(merge(P), 5);
     const mesh = new THREE.Mesh(rg, new THREE.MeshLambertMaterial({ vertexColors: true, map: noiseTexture('dirt'), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     mesh.receiveShadow = true;
@@ -317,10 +319,14 @@ export class World {
     }
     const counts = [0, 0, 0, 0];
     for (const s of spots) counts[s.type]++;
+    const outM = windOutline(0.0035);
+    const outs: THREE.InstancedMesh[] = [];
     const meshes = geos.map((g, i) => {
       const m = new THREE.InstancedMesh(g, windMat(0.0035), counts[i]);
       m.castShadow = true; m.receiveShadow = true;
       this.scene.add(m);
+      const o = new THREE.InstancedMesh(scaledOutline(g, 1.07), outM, counts[i]);
+      this.scene.add(o); outs.push(o);
       return m;
     });
     const idx = [0, 0, 0, 0];
@@ -331,6 +337,7 @@ export class World {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 6.28);
       m4.compose(new THREE.Vector3(s.x, heightAt(s.x, s.z) - 0.2, s.z), q, sv.set(k, k * (0.85 + r() * 0.3), k));
       meshes[s.type].setMatrixAt(idx[s.type], m4);
+      outs[s.type].setMatrixAt(idx[s.type], m4);
       this.treeTint[s.type].push(0.82 + r() * 0.3);
       idx[s.type]++;
       if (Math.abs(s.x) < 95 && s.z > -95 && s.z < 62) colliders.circles.push({ x: s.x, z: s.z, r: 0.5 * k });
@@ -730,6 +737,7 @@ export class World {
     }
     const light = new THREE.Mesh(ico(0.08, 0), new THREE.MeshBasicMaterial({ color: 0x40ff8a })); light.position.set(0, 0, 0.36); g.add(light);
     g.position.set(0, 4, -10);
+    addOutlines(g, 0.03);
     this.droneHolder.add(g);
     this.drones.push({ g, rotors, target: new THREE.Vector3(0, 4, -18), t: 0 });
   }
@@ -794,7 +802,7 @@ export class World {
     // trilhas de terra ao redor das áreas construídas
     if (this.rings) { this.scene.remove(this.rings); this.rings.geometry.dispose(); }
     const R: THREE.BufferGeometry[] = [];
-    const strip = (x1: number, z1: number, x2: number, z2: number) => { const g = new THREE.PlaneGeometry(x2 - x1, z2 - z1); g.rotateX(-Math.PI / 2); R.push(part(g, 0xa98a5c, [(x1 + x2) / 2, 0.013, (z1 + z2) / 2])); };
+    const strip = (x1: number, z1: number, x2: number, z2: number) => { const g = new THREE.PlaneGeometry(x2 - x1, z2 - z1); g.rotateX(-Math.PI / 2); R.push(part(g, 0xd4b27c, [(x1 + x2) / 2, 0.013, (z1 + z2) / 2])); };
     const rects: number[] = [];
     for (const p of PARCELS) {
       if (!owned[p.id]) continue;

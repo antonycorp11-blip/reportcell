@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { bx, mat, cyl, cone, ico, box } from './gfx';
+import { bx, mat, cyl, cone, ico, box, addOutlines } from './gfx';
 import { game } from './state';
 import type { FX } from './fx';
 
@@ -54,6 +54,7 @@ export class Walls {
   add(type: number, x: number, z: number, rot: number, hp?: number): Wall {
     const g = this.model(type);
     g.position.set(x, 0, z); g.rotation.y = rot;
+    addOutlines(g, 0.035);
     const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.12), new THREE.MeshBasicMaterial({ color: 0x5fd04a, depthTest: false }));
     bar.position.y = type === 2 ? 3.1 : 1.9; bar.renderOrder = 21; bar.visible = false;
     g.add(bar);

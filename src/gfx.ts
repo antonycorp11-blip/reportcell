@@ -44,6 +44,7 @@ export const ico = (r: number, d = 0) => new THREE.IcosahedronGeometry(r, d);
 export function injectWind<M extends THREE.Material>(m: M, k: number, key: string): M {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uTime;
+    if (sh.fragmentShader.includes('#include <normal_fragment_begin>')) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  #ifdef DOUBLE_SIDED\n  normal = normalize(vNormal);\n  #endif');
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
@@ -61,10 +62,21 @@ export function injectWind<M extends THREE.Material>(m: M, k: number, key: strin
   return m;
 }
 
-export function windMat(k = 0.08, opts: THREE.MeshLambertMaterialParameters = {}): THREE.MeshLambertMaterial {
-  const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, ...opts });
+/** Rampa de 3 tons (cel-shading) usada em todo o cenário. */
+export const GRAD = (() => {
+  const d = new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]);
+  const t = new THREE.DataTexture(d, 3, 1, THREE.RGBAFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true;
+  return t;
+})();
+type MatOpts = THREE.MeshToonMaterialParameters & { flatShading?: boolean };
+const clean = (o: MatOpts) => { const { flatShading, ...r } = o; void flatShading; return r; };
+
+export function windMat(k = 0.08, opts: MatOpts = {}): THREE.MeshToonMaterial {
+  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD, ...clean(opts) });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uTime;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  normal = normalize(vNormal);');
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
@@ -82,14 +94,14 @@ export function windMat(k = 0.08, opts: THREE.MeshLambertMaterialParameters = {}
   return m;
 }
 
-const matCache = new Map<string, THREE.MeshLambertMaterial>();
-export function mat(color: number, opts: THREE.MeshLambertMaterialParameters = {}): THREE.MeshLambertMaterial {
+const matCache = new Map<string, THREE.MeshToonMaterial>();
+export function mat(color: number, opts: MatOpts = {}): THREE.MeshToonMaterial {
   const key = color + JSON.stringify(opts);
   let m = matCache.get(key);
-  if (!m) { m = new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts }); matCache.set(key, m); }
+  if (!m) { m = new THREE.MeshToonMaterial({ color, gradientMap: GRAD, ...clean(opts) }); matCache.set(key, m); }
   return m;
 }
-export const vcMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+export const vcMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD });
 
 /** Cria um mesh de caixa simples posicionado. */
 export function bx(parent: THREE.Object3D, w: number, h: number, d: number, color: number | THREE.Material, x: number, y: number, z: number, ry = 0): THREE.Mesh {
@@ -281,4 +293,43 @@ export function noiseTexture(kind: 'grass' | 'dirt', size = 256): THREE.CanvasTe
   t.colorSpace = THREE.NoColorSpace;
   t.anisotropy = 4;
   return t;
+}
+
+// ---------------------------------------------------------------- contornos
+export const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x1c140c, side: THREE.BackSide });
+
+/** Adiciona contorno (casco invertido escalado) a todos os meshes sólidos de um objeto. */
+export function addOutlines(root: THREE.Object3D, w = 0.045, maxSize = 16) {
+  const list: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || m.userData.noOutline || m.userData.isOutline) return;
+    const mt = m.material as THREE.Material;
+    if (Array.isArray(m.material) || mt.transparent || (mt as THREE.MeshBasicMaterial).isMeshBasicMaterial) return;
+    list.push(m);
+  });
+  for (const m of list) {
+    const g = m.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox!;
+    const size = bb.getSize(new THREE.Vector3());
+    if (Math.max(size.x, size.y, size.z) > maxSize || Math.min(size.x, size.y, size.z) < 0.03) continue;
+    const c = bb.getCenter(new THREE.Vector3());
+    const o = new THREE.Mesh(g, OUTLINE_MAT);
+    const sx = 1 + (2 * w) / Math.max(size.x, 0.05), sy = 1 + (2 * w) / Math.max(size.y, 0.05), sz = 1 + (2 * w) / Math.max(size.z, 0.05);
+    o.scale.set(sx, sy, sz);
+    o.position.set(c.x * (1 - sx), c.y * (1 - sy), c.z * (1 - sz));
+    o.userData.isOutline = true;
+    o.raycast = () => { /* */ };
+    m.add(o);
+  }
+}
+
+/** Geometria escalada a partir do centro (contorno para instâncias). */
+export function scaledOutline(g: THREE.BufferGeometry, k = 1.06): THREE.BufferGeometry {
+  const o = g.clone();
+  o.computeBoundingBox();
+  const c = o.boundingBox!.getCenter(new THREE.Vector3());
+  o.translate(-c.x, -c.y, -c.z); o.scale(k, k, k); o.translate(c.x, c.y, c.z);
+  return o;
 }
