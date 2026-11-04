@@ -25,7 +25,7 @@ import { Minimap } from './minimap';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
-import { DAY_LEN, baseMax, playerMax, addXp } from './state';
+import { baseMax, playerMax, addXp, dayLen, diffK } from './state';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -256,6 +256,7 @@ ui.initUI({
   close() { input.enabled = true; if (!isTouch && playing) canvas.requestPointerLock?.(); },
   setting(k, v) {
     if (k === 'sound') { s.settings.sound = !!v; setSound(!!v); }
+    if (k === 'diff') { s.settings.diff = v as 'easy' | 'normal' | 'hard'; planNext(); ui.toast('💀 Dificuldade alterada — vale a partir da próxima noite'); }
     if (k === 'quality') { s.settings.quality = v as State['settings']['quality']; doSave(); location.reload(); }
   },
   reset() { wiped = true; wipe(); location.reload(); },
@@ -512,16 +513,16 @@ function planWave(n: number) {
   const r = rng(n * 7919 + s.prestiges * 131 + 7);
   const lanes = lanesFor(n);
   const mod = n % 5 === 0 ? 'boss' : n % 4 === 0 ? 'blood' : n % 6 === 3 ? 'fog' : n >= 6 && n % 7 === 6 ? 'double' : null;
-  const total = Math.min(170, Math.round((5 + n * 3.3) * (mod === 'double' ? 1.6 : 1)));
+  const total = Math.min(220, Math.round((12 + n * 6 + n * n * 0.25) * (mod === 'double' ? 1.6 : 1) * diffK()[0]));
   const list: WaveEntry[] = [];
   const newest = lanes[lanes.length - 1];
   for (let i = 0; i < total; i++) {
     const v = r();
     let kind: ZKind = 'walker';
-    if (n >= 2 && v < 0.2) kind = 'runner';
-    else if (n >= 3 && v < 0.3) kind = 'brute';
-    else if (n >= 4 && v < 0.4) kind = 'digger';
-    else if (n >= 5 && v < 0.5) kind = 'crow';
+    if (v < 0.15 + Math.min(0.1, n * 0.02)) kind = 'runner';
+    else if (n >= 2 && v < 0.3) kind = 'brute';
+    else if (n >= 3 && v < 0.4) kind = 'digger';
+    else if (n >= 4 && v < 0.52) kind = 'crow';
     // rota nova recebe parte maior na noite em que abre
     const lane = newest.unlock === n && r() < 0.5 ? newest : lanes[Math.floor(r() * lanes.length)];
     list.push({ kind, lane: lane.id });
@@ -549,11 +550,16 @@ function spawnOne(e: WaveEntry) {
   const n = s.nights + 1;
   const lane = LMAP[e.lane];
   const [x, z] = lane.pts[0];
-  horde.spawn(e.kind, x + (Math.random() - 0.5) * 4, z + (Math.random() - 0.5) * 4, 1 + 0.13 * (n - 1), lane.pts);
+  horde.spawn(e.kind, x + (Math.random() - 0.5) * 4, z + (Math.random() - 0.5) * 4, (1 + 0.2 * (n - 1)) * diffK()[1], lane.pts);
 }
 
 function startNight() {
   if (s.phase === 'night' || over) return;
+  if (s.phaseT > 5) {
+    const bonus = Math.round(s.phaseT * (1 + s.nights * 0.6));
+    earn(bonus);
+    ui.toast(`⏩ Bônus de coragem: +${fmt(bonus)}`, 'good');
+  }
   s.phase = 'night';
   const n = s.nights + 1;
   spawnQueue = [...plan.list];
@@ -572,13 +578,13 @@ function startNight() {
 
 function endNight() {
   s.phase = 'day';
-  s.phaseT = DAY_LEN;
+  s.phaseT = dayLen(s.nights + 1);
   s.nights++;
   const perfect = s.baseHp >= baseAtDusk - 0.5;
   const reward = Math.round((40 + s.nights * 35) * (nightMod === 'blood' || nightMod === 'double' ? 1.5 : 1) * (perfect ? 1.5 : 1));
   earn(reward);
   addXp(10 + s.nights * 5);
-  s.baseHp = Math.min(baseMax(), s.baseHp + baseMax() * 0.5);
+  s.baseHp = Math.min(baseMax(), s.baseHp + baseMax() * 0.3);
   playerHp = playerMax();
   ui.banner(`🌅 Você sobreviveu à noite ${s.nights}!`, `+${fmt(reward)}${perfect ? ' · 🛡️ DEFESA PERFEITA ×1,5' : ''} · veja as rotas da próxima noite`);
   nightMod = null; eyeTint();
@@ -594,14 +600,14 @@ function updatePhase(dt: number) {
   if (s.phase === 'day') {
     s.phaseT -= dt;
     if (s.phaseT <= 0) startNight();
-    const p = 1 - Math.max(0, s.phaseT) / DAY_LEN;
+    const p = 1 - Math.max(0, s.phaseT) / dayLen(s.nights);
     visDay += (0.03 + 0.66 * p - visDay) * Math.min(1, dt * 1.5);
   } else {
     spawnT -= dt;
     const n = s.nights + 1;
-    if (spawnT <= 0 && spawnQueue.length && horde.alive() < 34) {
+    if (spawnT <= 0 && spawnQueue.length && horde.alive() < 45) {
       spawnOne(spawnQueue.shift()!);
-      spawnT = Math.max(0.3, 2.3 - n * 0.12) * (0.6 + Math.random() * 0.8);
+      spawnT = Math.max(0.2, 1.4 - n * 0.09) * (0.5 + Math.random() * 0.8);
     }
     const left = spawnQueue.length + horde.alive();
     const target = 0.75 + 0.21 * (1 - left / Math.max(1, waveTotal));
@@ -639,6 +645,7 @@ function eyeTint() {
 
 function hurtPlayer(d: number) {
   if (deadT > 0 || over) return;
+  d *= diffK()[2];
   if (s.inTractor) d *= 0.4;
   playerHp -= d;
   hurtT = 0;
@@ -654,6 +661,7 @@ function hurtPlayer(d: number) {
 
 function hurtBase(d: number) {
   if (over) return;
+  d *= diffK()[2];
   s.baseHp -= d;
   baseAlertT -= 1 / 60;
   if (baseAlertT <= 0) { baseAlertT = 6; ui.toast('🏠 A casa está sendo atacada!', 'warn'); }
@@ -715,18 +723,18 @@ function attack() {
     if (v.length() > 0.01 && v.normalize().dot(fwd) < 0.35) return;
     if (z.kind === 'crow' && player.pitch < 0.2) return;
     hitAny = true;
-    if (horde.hit(z, 30 * (1 + 0.3 * lv('blade')), { knock: fwd.clone().multiplyScalar(7) })) onKill(z, 'player');
+    if (horde.hit(z, 18 * (1 + 0.3 * lv('blade')), { knock: fwd.clone().multiplyScalar(3.5) })) onKill(z, 'player');
   });
   if (hitAny) { sfx.whack(); shake = Math.max(shake, 0.08); }
   if (lv('seedgun')) {
     const from = camera.position.clone().addScaledVector(aimDir, 0.8);
     from.y -= 0.2;
-    defense.fireSeed(from, aimTarget(0.35, 34), aimDir.clone(), 16 * (1 + 0.25 * lv('ammo')));
+    defense.fireSeed(from, aimTarget(0.3, 30), aimDir.clone(), 9 * (1 + 0.25 * lv('ammo')));
     sfx.shoot(3);
-    cooldown = 0.3 / (1 + 0.15 * sk('m1'));
+    cooldown = 0.38 / (1 + 0.15 * sk('m1'));
   } else {
     if (!hitAny) sfx.swing();
-    cooldown = 0.45 / (1 + 0.15 * sk('m1'));
+    cooldown = 0.6 / (1 + 0.15 * sk('m1'));
   }
 }
 

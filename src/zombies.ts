@@ -9,12 +9,12 @@ import { buildZombie } from './zmodels';
 export type ZKind = 'walker' | 'runner' | 'brute' | 'digger' | 'crow' | 'colossus';
 
 export const ZDEF: Record<ZKind, { name: string; hp: number; speed: number; dps: number; reward: number; scale: number; shirt: number; skin: number }> = {
-  walker: { name: 'Andarilho', hp: 60, speed: 1.15, dps: 10, reward: 6, scale: 1, shirt: 0x5a6f8a, skin: 0x86a06e },
-  runner: { name: 'Corredor', hp: 34, speed: 2.7, dps: 8, reward: 8, scale: 0.9, shirt: 0xa0463a, skin: 0x9aae7a },
-  brute: { name: 'Brutamonte', hp: 340, speed: 0.75, dps: 30, reward: 26, scale: 1.55, shirt: 0x3c3c44, skin: 0x6f8a5a },
-  digger: { name: 'Cavador', hp: 90, speed: 1.6, dps: 14, reward: 15, scale: 0.95, shirt: 0x7a5a3a, skin: 0x8a9a62 },
-  crow: { name: 'Corvo-zumbi', hp: 30, speed: 3.3, dps: 6, reward: 10, scale: 1, shirt: 0x1d1f22, skin: 0x2f3a2a },
-  colossus: { name: 'Colosso', hp: 2600, speed: 0.6, dps: 70, reward: 320, scale: 2.7, shirt: 0x4a2a3a, skin: 0x5f7a4a },
+  walker: { name: 'Andarilho', hp: 95, speed: 1.4, dps: 15, reward: 6, scale: 1, shirt: 0x5a6f8a, skin: 0x86a06e },
+  runner: { name: 'Corredor', hp: 55, speed: 3.1, dps: 12, reward: 8, scale: 0.9, shirt: 0xa0463a, skin: 0x9aae7a },
+  brute: { name: 'Brutamonte', hp: 520, speed: 0.85, dps: 40, reward: 26, scale: 1.55, shirt: 0x3c3c44, skin: 0x6f8a5a },
+  digger: { name: 'Cavador', hp: 140, speed: 1.8, dps: 20, reward: 15, scale: 0.95, shirt: 0x7a5a3a, skin: 0x8a9a62 },
+  crow: { name: 'Corvo-zumbi', hp: 48, speed: 3.6, dps: 9, reward: 10, scale: 1, shirt: 0x1d1f22, skin: 0x2f3a2a },
+  colossus: { name: 'Colosso', hp: 4200, speed: 0.65, dps: 90, reward: 320, scale: 2.7, shirt: 0x4a2a3a, skin: 0x5f7a4a },
 };
 
 export interface Zombie {
@@ -147,7 +147,7 @@ export class Horde {
       // alvo: jogador (se perto) ou a casa
       const dpx = ctx.player.x - p.x, dpz = ctx.player.z - p.z;
       const dPlayer = Math.hypot(dpx, dpz);
-      const chase = dPlayer < (z.kind === 'crow' ? 14 : 7) && !z.burrowed;
+      const chase = dPlayer < (z.kind === 'crow' ? 16 : 10) && !z.burrowed;
       let tx = BASE.x, tz = BASE.z;
       if (z.path && z.wp < z.path.length) {
         const last = z.wp === z.path.length - 1;

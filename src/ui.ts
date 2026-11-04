@@ -58,6 +58,7 @@ export function initUI(h: Handlers) {
       case 'sound': H.setting('sound', !game.s.settings.sound); break;
       case 'quality': H.setting('quality', v); break;
       case 'fs': H.fullscreen(); break;
+      case 'diff': H.setting('diff', v); break;
       case 'reset': if (confirm('Apagar todo o progresso e começar do zero?')) H.reset(); break;
     }
     renderPanel();
@@ -148,6 +149,7 @@ function renderPanel() {
     try { sens = localStorage.getItem('tv-sens') || '1'; } catch { /* */ }
     content = `
       <div class="row"><span>🔊 Som</span><button data-a="sound" class="tg ${s.settings.sound ? 'on' : ''}">${s.settings.sound ? 'Ligado' : 'Desligado'}</button></div>
+      <div class="row"><span>💀 Dificuldade</span><span class="seg">${(['easy', 'normal', 'hard'] as const).map((k) => `<button data-a="diff" data-v="${k}" class="${(s.settings.diff ?? 'normal') === k ? 'on' : ''}">${{ easy: 'Fácil', normal: 'Normal', hard: 'Pesadelo' }[k]}</button>`).join('')}</span></div>
       <div class="row"><span>🎨 Gráficos</span><span class="seg">${(['auto', 'low', 'high'] as const).map((k) => `<button data-a="quality" data-v="${k}" class="${q === k ? 'on' : ''}">${{ auto: 'Auto', low: 'Leve', high: 'Bonito' }[k]}</button>`).join('')}</span></div>
       <div class="row"><span>👆 Sensibilidade</span><input id="sens" type="range" min="0.4" max="2.2" step="0.1" value="${sens}"></div>
       <div class="row"><span>⛶ Tela cheia</span><button data-a="fs">Alternar</button></div>

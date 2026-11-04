@@ -50,7 +50,7 @@ const all = (...fs: ((s: State) => string | null)[]) => (s: State) => {
 export const UPGRADES: UpDef[] = [
   // Defesa
   { id: 'rage', tab: 'def', name: 'Raiva Verde', icon: '😡', max: 10, base: 120, mult: 1.75, desc: (l) => `Plantas causam +15% de dano por nível (atual +${l * 15}%)` },
-  { id: 'fort', tab: 'def', name: 'Fortificar Casa', icon: '🏠', max: 6, base: 150, mult: 2.1, desc: (l) => `Vida da casa: ${Math.round(600 * (1 + 0.5 * l))} → ${Math.round(600 * (1 + 0.5 * (l + 1)))}` },
+  { id: 'fort', tab: 'def', name: 'Fortificar Casa', icon: '🏠', max: 6, base: 150, mult: 2.1, desc: (l) => `Vida da casa: ${Math.round(400 * (1 + 0.5 * l))} → ${Math.round(400 * (1 + 0.5 * (l + 1)))}` },
   { id: 'blade', tab: 'def', name: 'Pá Afiada', icon: '🗡️', max: 5, base: 90, mult: 2, desc: (l) => `+30% de dano corpo a corpo por nível (atual +${l * 30}%)` },
   { id: 'medkit', tab: 'def', name: 'Kit Médico', icon: '❤️', max: 3, base: 200, mult: 2.5, desc: (l) => `Sua vida: ${100 + 40 * l} → ${100 + 40 * (l + 1)} e regenera mais rápido` },
   { id: 'seedgun', tab: 'def', name: 'Lança-Sementes', icon: '🔫', max: 1, base: 500, mult: 1, desc: () => 'Sua arma passa a atirar sementes à distância (mira automática)', req: L(3) },
