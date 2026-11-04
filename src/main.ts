@@ -1,6 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
-import { CROPS, HAND_TOOLS, IMPLEMENTS, UPMAP, GOALS, upCost } from './data';
+import { CROPS, HAND_TOOLS, IMPLEMENTS, UPMAP, GOALS, upCost, isCropUnlocked, FUSIONS } from './data';
 import { game, bus, load, newState, save, wipe, fmt, lv, sk, canCap, implWidth, tractorSpeed, walkSpeed, earn, spend, siloCap, siloUsed, legacyGain, type State } from './state';
 import * as farm from './farm';
 import { FarmView, tileX, tileZ, isOwned, T, PARCELS } from './farm';
@@ -270,7 +270,7 @@ ui.initUI({
   zoom: (d: number) => { aer.th = Math.max(22, Math.min(140, aer.th * (d > 0 ? 1.25 : 0.8))); },
   tool: selectTool,
   wall(i) { buildType = i; if (aerial) ui.toast(`Toque no mapa para construir · ${WALLS[i].icon} ${WALLS[i].name} · ${resTxt(WALLS[i].cost)}`); sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${resTxt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
-  crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
+  crop(i) { if (isCropUnlocked(s, i)) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
   startNight: () => startNight(),
   npc: (v: string) => npcAction(v),
   weapon: (id: string) => { if (!hasWeapon(id)) return; s.weapon = id; player.setWeapon(id); sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${WEAPONS[id].name} · ${WEAPONS[id].desc}`); },
@@ -1022,11 +1022,11 @@ function openNpc(who: Who) {
   npcWho = who;
   const line = LINES[who][(Math.random() * LINES[who].length) | 0];
   const opt = (id: string, name: string, desc: string, cost: string, ok: boolean, done = false) =>
-    `<div class="item ${done ? 'maxed' : ''}"><div class="it"><b>${name}</b><p>${desc}</p><p class="costs">${cost}</p></div>${done ? '<div class="done">✔</div>' : `<button class="buy" data-a="npc" data-v="${id}" ${ok ? '' : 'disabled'}>${id.startsWith('w:') ? 'Construir' : id.startsWith('f:') ? 'Forjar' : 'Fazer'}</button>`}</div>`;
+    `<div class="item ${done ? 'maxed' : ''}"><div class="it"><b>${name}</b><p>${desc}</p><p class="costs">${cost}</p></div>${done ? '<div class="done">✔</div>' : `<button class="buy" data-a="npc" data-v="${id}" ${ok ? '' : 'disabled'}>${id.startsWith('w:') ? 'Construir' : id.startsWith('f:') ? 'Forjar' : id.startsWith('m:') ? 'Fundir' : 'Fazer'}</button>`}</div>`;
   let body = '';
   if (who === 'ana') body = ['eat', 'soup', 'bread', 'pie'].map((k) => { const r = RECIPES[k]; return opt('r:' + k, r.name, r.desc + (r.buff && s.buffs[r.buff] ? ' · <b>ativo</b>' : ''), costHtml(r.need, r.inv), canPay(r.need, r.inv) && !(r.buff && s.buffs[r.buff])); }).join('');
   if (who === 'bia' || who === 'leo') body = opt('r:fert', RECIPES.fert.name, RECIPES.fert.desc + (s.buffs.fert ? ' · <b>ativo</b>' : ''), costHtml(RECIPES.fert.need, RECIPES.fert.inv), canPay(RECIPES.fert.need, RECIPES.fert.inv) && !s.buffs.fert) + opt('w:kidcans', WORKSHOP.kidcans.name, WORKSHOP.kidcans.desc, costHtml(WORKSHOP.kidcans.need), canPay(WORKSHOP.kidcans.need), lv('kidcans') >= 1);
-  if (who === 'ze') body = '<p class="note">⚔️ Forja — armas</p>' + Object.entries(WEAPONS).filter(([id]) => id !== 'pa').map(([id, w]) => opt('f:' + id, w.name, w.desc, costHtml(w.cost!), canPay(w.cost!), hasWeapon(id))).join('') + '<p class="note">🔧 Oficina — defesas da casa</p>' + ['plates', 'porch', 'spot', 'turret'].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
+  if (who === 'ze') body = '<p class="note">🧬 Laboratório — fusões de plantas</p>' + FUSIONS.map((f) => { const c = CROPS[f.crop]; return opt('m:' + f.mut, `${c.def}`, `${f.a} + ${f.b} → ${c.role}`, costHtml(f.need, f.inv), canPay(f.need, f.inv), lv(f.mut) > 0); }).join('') + '<p class="note">⚔️ Forja — armas</p>' + Object.entries(WEAPONS).filter(([id]) => id !== 'pa').map(([id, w]) => opt('f:' + id, w.name, w.desc, costHtml(w.cost!), canPay(w.cost!), hasWeapon(id))).join('') + '<p class="note">🔧 Oficina — defesas da casa</p>' + ['plates', 'porch', 'spot', 'turret'].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
     + opt('fix', 'Consertar todas as entradas', 'O Vô prega tábuas em tudo que está quebrado', costHtml({ wood: Math.max(1, missingPlanks()) }), missingPlanks() > 0 && (s.res.wood || 0) >= missingPlanks(), missingPlanks() === 0);
   ui.openPanel('npc', `<div class="npc"><div class="np ${who}">${icon(who === 'ana' ? 'food' : who === 'ze' ? 'hammer' : 'drop')}</div><div><b>${FAMILY[who].name}</b> <small>${FAMILY[who].role}</small><p class="say">“${line}”</p></div></div>${body}`);
 }
@@ -1043,6 +1043,15 @@ function npcAction(v: string) {
     if (r.buff) s.buffs[r.buff] = 1;
     if (id === 'soup') playerHp = playerMax();
     sfx.buy(); ui.toast(`🍲 ${r.name}! ${r.desc}`, 'good');
+  } else if (kind === 'm') {
+    const f = FUSIONS.find((x) => x.mut === id)!;
+    if (lv(id) || !canPay(f.need, f.inv)) { sfx.error(); return; }
+    for (const [k, n] of Object.entries(f.need)) s.res[k] -= n;
+    for (const [k, n] of Object.entries(f.inv)) { s.inv[k] -= n; if (s.inv[k] <= 0) delete s.inv[k]; }
+    s.up[id] = 1;
+    sfx.level();
+    ui.banner('🧬 Fusão concluída!', `${CROPS[f.crop].def} agora pode ser plantado`);
+    ui.invalidateBars();
   } else if (kind === 'f') {
     const w = WEAPONS[id];
     if (hasWeapon(id) || !payRes(w.cost!)) return;
@@ -1133,7 +1142,7 @@ function handleKeys() {
   if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : 7));
   if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : 7; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
   if (consume('KeyC')) {
-    const avail = CROPS.map((c, i) => [c, i] as const).filter(([c]) => c.level <= s.level);
+    const avail = CROPS.map((c, i) => [c, i] as const).filter(([, i]) => isCropUnlocked(s, i));
     const k = avail.findIndex(([, i]) => i === s.crop);
     s.crop = avail[(k + 1) % avail.length][1];
     ui.renderCropbar(s.inTractor);

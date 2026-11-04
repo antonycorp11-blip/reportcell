@@ -206,7 +206,7 @@ export class Horde {
         const t = farm.tileAt(p.x, p.z);
         if (t >= 0 && farm.T.s[t] === 2 && farm.T.h[t] > 0) {
           z.eating = true;
-          if (farm.T.c[t] === 6 && this.hit(z, 14 * dt * (1 + 0.3 * farm.plantLevel(t)))) { ctx.kill(z); continue; }
+          if ((farm.T.c[t] === 6 || farm.T.c[t] === 10) && this.hit(z, 14 * dt * (1 + 0.3 * farm.plantLevel(t)))) { ctx.kill(z); continue; }
           if (farm.damageTile(t, z.dps * dt * (z.kind === 'colossus' ? 4 : 1))) this.fx.spawn(farm.tileX(t), 0.5, farm.tileZ(t), 0x6a8a3a, 12, 1.2, 3, 9, 0.8);
           else if (Math.random() < dt * 3) this.fx.spawn(farm.tileX(t), 0.6, farm.tileZ(t), 0x7fb54a, 2, 0.8, 2, 9, 0.5);
         }

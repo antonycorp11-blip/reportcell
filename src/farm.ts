@@ -25,7 +25,7 @@ export const T = {
   a: new Float32Array(N),        // 0 = planta, 1 = criatura viva
   k: new Uint16Array(N),         // zumbis eliminados pela planta
 };
-export const CROP_HP = [40, 70, 55, 300, 60, 90, 480, 80];
+export const CROP_HP = [40, 70, 55, 300, 60, 90, 480, 80, 80, 65, 520];
 export const hpMult = () => pct('php') * (sk('d1') ? 1.5 : 1);
 export const plantLevel = (t: number) => { const k = T.k[t] * (sk('d3') ? 2 : 1); return k >= 40 ? 3 : k >= 15 ? 2 : k >= 5 ? 1 : 0; };
 export const tileMaxHp = (t: number) => CROP_HP[T.c[t]] * hpMult() * (0.3 + 0.7 * T.g[t]);
@@ -237,7 +237,9 @@ export class FarmView {
     this.grass.receiveShadow = true;
     const cropMat = windToon(0.05);
     const outMat = windOutline(0.05);
-    const geos = buildToonCrops();
+    const base8 = buildToonCrops();
+    const geos = CROPS.map((c, i) => base8[c.base ?? i]);
+    const mats = CROPS.map((c) => { if (!c.tint) return cropMat; const m = windToon(0.05); m.color.set(c.tint); return m; });
     this.outlines = geos.map((g) => {
       const m = new THREE.InstancedMesh(hull(g, 0.022), outMat, N);
       m.count = 0; m.frustumCulled = false;
@@ -245,8 +247,8 @@ export class FarmView {
       scene.add(m);
       return m;
     });
-    this.crops = geos.map((g) => {
-      const m = new THREE.InstancedMesh(g, cropMat, N);
+    this.crops = geos.map((g, i) => {
+      const m = new THREE.InstancedMesh(g, mats[i], N);
       m.castShadow = high; m.receiveShadow = true;
       return m;
     });

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { T, N, owned, tileX, tileZ, markDirty } from './farm';
 import { rng } from './gfx';
+import { CROPS } from './data';
+import { toon } from './toon';
 import { tp, tmerge, hull, sph, cap, cyl, cone, tor, faceCap, faceTex, eye, brow, mouth, blush, bands, TOON, OUTLINE } from './toon';
 import type { FX } from './fx';
 
@@ -238,11 +240,14 @@ export class Creatures {
       scene.add(im);
       return im;
     };
-    for (const md of models) {
+    for (let ci = 0; ci < CROPS.length; ci++) {
+      const cd = CROPS[ci];
+      const md = models[cd.base ?? ci];
       const faceMat = new THREE.MeshBasicMaterial({ map: md.tex, transparent: true, alphaTest: 0.3, depthWrite: false, color: 0xeeeeee });
+      const bm = cd.tint ? toon({ color: cd.tint }) : TOON;
       this.sets.push({
-        body: mk(md.body, TOON, true), bodyO: mk(hull(md.body, 0.03), OUTLINE),
-        head: mk(md.head, TOON, true), headO: mk(hull(md.head, 0.03), OUTLINE),
+        body: mk(md.body, bm, true), bodyO: mk(hull(md.body, 0.03), OUTLINE),
+        head: mk(md.head, bm, true), headO: mk(hull(md.head, 0.03), OUTLINE),
         face: mk(md.face, faceMat), glow: md.glow ? mk(md.glow, glowMat) : null, model: md,
       });
     }
@@ -256,6 +261,7 @@ export class Creatures {
   update(dt: number, night: boolean, time: number, cam: THREE.Vector3) {
     this.nightT = night ? this.nightT + dt : 0;
     const counts = new Array(this.sets.length).fill(0);
+    const BASE = CROPS.map((cd, i) => cd.base ?? i);
     let ns = 0;
     let changed = false;
     for (let t = 0; t < N; t++) {
@@ -275,13 +281,15 @@ export class Creatures {
       const x = tileX(t), z = tileZ(t);
       if ((x - cam.x) ** 2 + (z - cam.z) ** 2 > 90 * 90) continue;
       const set = this.sets[c];
+      const ct = c;
+      const c2 = BASE[c];
       const md = set.model;
       // mira: corpo vira devagar, cabeça rápido
       const tg = this.aim(t);
       const ty = tg ? Math.atan2(-(tg.x - x), -(tg.z - z)) : Math.sin(time * 0.4 + t) * 0.5;
       const pu = Math.max(0, T.p[t]);
       let d = ty - this.yaw[t]; d = Math.atan2(Math.sin(d), Math.cos(d));
-      if (c === 0 && pu > 0) this.yaw[t] += dt * 20;
+      if (c2 === 0 && pu > 0) this.yaw[t] += dt * 20;
       else this.yaw[t] += d * Math.min(1, dt * 3);
       let hd = ty - this.yaw[t]; hd = Math.atan2(Math.sin(hd), Math.cos(hd));
       hd = Math.max(-0.9, Math.min(0.9, hd));
@@ -294,14 +302,14 @@ export class Creatures {
       const bounce = Math.abs(Math.sin(ph)) * 0.05;
       let sx = k * big, sy = k * big * (1 + Math.sin(ph * 2) * 0.03), lean = Math.sin(ph * 0.5) * 0.05, lift = 0;
       let hp = Math.sin(ph) * 0.08, hr = Math.sin(ph * 0.7) * 0.08, hs = 1;
-      if (c === 1) { hp -= pu * 0.5; lean += pu * 0.15; }
-      if (c === 2) hp -= 0.15 + pu * 0.25;
-      if (c === 3) { const ch = this.charge[t]; hs = 1 + ch * 0.3 + Math.sin(time * (10 + ch * 35)) * ch * 0.08; }
-      if (c === 4) { hp += pu * 0.4; lean -= pu * 0.3; }
-      if (c === 5) { lift = 0.3 + Math.sin(time * 2 + t) * 0.15; hr += Math.sin(time * 1.3 + t) * 0.15; }
-      if (c === 7) { hp -= pu * 0.3; hs = 1 + pu * 0.08; }
-      if (c === 6 && T.p[t] < 0) hs = 1.05;
-      if (pu > 0 && c !== 0) { sx *= 1 + pu * 0.1; sy *= 1 - pu * 0.08; }
+      if (c2 === 1) { hp -= pu * 0.5; lean += pu * 0.15; }
+      if (c2 === 2) hp -= 0.15 + pu * 0.25;
+      if (c2 === 3) { const ch = this.charge[t]; hs = 1 + ch * 0.3 + Math.sin(time * (10 + ch * 35)) * ch * 0.08; }
+      if (c2 === 4) { hp += pu * 0.4; lean -= pu * 0.3; }
+      if (c2 === 5) { lift = 0.3 + Math.sin(time * 2 + t) * 0.15; hr += Math.sin(time * 1.3 + t) * 0.15; }
+      if (c2 === 7) { hp -= pu * 0.3; hs = 1 + pu * 0.08; }
+      if (c2 === 6 && T.p[t] < 0) hs = 1.05;
+      if (pu > 0 && c2 !== 0) { sx *= 1 + pu * 0.1; sy *= 1 - pu * 0.08; }
       if (T.p[t] < 0) { sx *= 1 - T.p[t] * 0.12; sy *= 1 + T.p[t] * 0.25; }
       this.q.setFromEuler(this.e.set(lean, this.yaw[t], 0, 'YXZ'));
       this.m4.compose(this.p.set(x, 0.1 + (lift + bounce) * k, z), this.q, this.sc.set(sx, sy, sx));

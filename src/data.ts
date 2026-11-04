@@ -4,6 +4,7 @@ export interface CropDef {
   id: string; name: string; icon: string;
   seed: number; price: number; time: number; xp: number; level: number;
   def: string; role: string;
+  base?: number; tint?: number; mut?: string;
 }
 
 export const CROPS: CropDef[] = [
@@ -15,6 +16,15 @@ export const CROPS: CropDef[] = [
   { id: 'lavender', name: 'Lavanda', icon: '💜', seed: 70, price: 180, time: 80, xp: 28, level: 9, def: 'Lavanda-Sonífera', role: 'Aura que deixa zumbis lentos e fere' },
   { id: 'cactus', name: 'Cacto', icon: '🌵', seed: 10, price: 24, time: 45, xp: 5, level: 3, def: 'Cacto-Muralha', role: 'Muralha resistente: espinhos ferem quem morde' },
   { id: 'pepper', name: 'Pimenta', icon: '🌶️', seed: 30, price: 85, time: 65, xp: 14, level: 6, def: 'Pimenta-Dragão', role: 'Cospe fogo de perto e queima em área' },
+  { id: 'firecorn', name: 'Milho Incendiário', icon: '🔥', seed: 20, price: 60, time: 45, xp: 10, level: 1, def: 'Milho Incendiário', role: 'Grãos em brasa que incendeiam o alvo', base: 1, tint: 0xff7a4a, mut: 'm_fire' },
+  { id: 'prism', name: 'Girassol Prisma', icon: '🌈', seed: 35, price: 95, time: 60, xp: 14, level: 1, def: 'Girassol Prisma', role: 'Laser que sempre atravessa e deixa zumbis lentos', base: 2, tint: 0xb0a0ff, mut: 'm_prism' },
+  { id: 'spikepump', name: 'Abóbora Espinhosa', icon: '🌵', seed: 45, price: 140, time: 70, xp: 18, level: 1, def: 'Abóbora Espinhosa', role: 'Muralha com espinhos e explosão gigante', base: 3, tint: 0x9adf5a, mut: 'm_spike' },
+];
+export const isCropUnlocked = (s: State, i: number) => { const c = CROPS[i]; return c.mut ? (s.up[c.mut] || 0) > 0 : s.level >= c.level; };
+export const FUSIONS: { mut: string; crop: number; a: string; b: string; need: Record<string, number>; inv: Record<string, number> }[] = [
+  { mut: 'm_fire', crop: 8, a: 'Milho', b: 'Pimenta', need: { mseed: 3 }, inv: { corn: 5, pepper: 3 } },
+  { mut: 'm_prism', crop: 9, a: 'Girassol', b: 'Lavanda', need: { mseed: 4 }, inv: { sunflower: 4, lavender: 2 } },
+  { mut: 'm_spike', crop: 10, a: 'Abóbora', b: 'Cacto', need: { mseed: 5 }, inv: { pumpkin: 3, cactus: 4 } },
 ];
 
 export interface ProductDef {

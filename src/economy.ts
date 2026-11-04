@@ -1,4 +1,4 @@
-import { CROPS, ITEMS, PRODUCTS } from './data';
+import { CROPS, ITEMS, PRODUCTS, isCropUnlocked } from './data';
 import { game, bus, earn, sellMult, siloCap, siloUsed, lv, sk, pct } from './state';
 import * as farm from './farm';
 
@@ -31,7 +31,7 @@ export function sellAll(mult = 1): number {
 
 export function availableItems(): string[] {
   const s = game.s;
-  const out = CROPS.filter((c) => c.level <= s.level).map((c) => c.id);
+  const out = CROPS.filter((c, i) => isCropUnlocked(s, i)).map((c) => c.id);
   for (const p of PRODUCTS) if (lv(p.building)) out.push(p.id);
   return out;
 }

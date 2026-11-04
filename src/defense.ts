@@ -7,7 +7,8 @@ import type { Horde, Zombie } from './zombies';
 import type { FX } from './fx';
 
 /** Atributos das culturas-defensoras (índice = cultura). */
-export const DEF = [
+export interface DefSpec { kind: 'blade' | 'shoot' | 'laser' | 'bomb' | 'lob' | 'aura' | 'wall' | 'flame'; range: number; dmg: number; cd: number; eyeY: number; burn?: number; pierce?: boolean; slow?: boolean; radius?: number }
+export const DEF: DefSpec[] = [
   { kind: 'blade', range: 2.4, dmg: 8, cd: 0.5, eyeY: 1.05 },
   { kind: 'shoot', range: 15, dmg: 15, cd: 0.9, eyeY: 1.95 },
   { kind: 'laser', range: 19, dmg: 28, cd: 1.5, eyeY: 1.75 },
@@ -16,9 +17,12 @@ export const DEF = [
   { kind: 'aura', range: 6, dmg: 5, cd: 0, eyeY: 0.85 },
   { kind: 'wall', range: 0, dmg: 14, cd: 0, eyeY: 1.4 },
   { kind: 'flame', range: 6.5, dmg: 34, cd: 0.15, eyeY: 1.6 },
-] as const;
+  { kind: 'shoot', range: 16, dmg: 17, cd: 0.8, eyeY: 1.95, burn: 9 },
+  { kind: 'laser', range: 21, dmg: 30, cd: 1.3, eyeY: 1.75, pierce: true, slow: true },
+  { kind: 'bomb', range: 2.4, dmg: 260, cd: 0, eyeY: 0.45, radius: 6.5 },
+];
 
-interface Proj { kind: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; dmg: number; target: Zombie | null; player: boolean; src: number }
+interface Proj { kind: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; dmg: number; target: Zombie | null; player: boolean; src: number; burn?: number }
 interface Beam { g: THREE.Group; core: THREE.Mesh; glow: THREE.Mesh; flash: THREE.Mesh; muzzle: THREE.Mesh; life: number; len: number }
 const BEAM_T = 0.38;
 
@@ -45,6 +49,7 @@ export class Defense {
       { g: ico(0.12, 0), c: 0xffd54a },        // 0 grão de milho
       { g: ico(0.2, 0), c: 0xff3b5c },         // 1 ácido
       { g: box(0.1, 0.1, 0.3), c: 0x9dff7a },  // 2 semente do jogador
+      { g: ico(0.15, 0), c: 0xff6a1a },        // 3 grão em brasa
     ];
     for (const k of kinds) {
       const m = new THREE.InstancedMesh(k.g, new THREE.MeshBasicMaterial({ color: k.c }), 200);
@@ -133,7 +138,7 @@ export class Defense {
           if (d.kind === 'shoot') {
             const ty = look.kind === 'crow' ? 3.4 : 1.2;
             this.v.set(lp.x - x, ty - 1.8, lp.z - z).normalize().multiplyScalar(24);
-            this.projs.push({ kind: 0, x, y: 1.8, z, vx: this.v.x, vy: this.v.y, vz: this.v.z, life: 1, dmg: d.dmg * m, target: look, player: false, src: t });
+            this.projs.push({ kind: d.burn ? 3 : 0, x, y: 1.8, z, vx: this.v.x, vy: this.v.y, vz: this.v.z, life: 1, dmg: d.dmg * m, target: look, player: false, src: t, burn: d.burn });
             this.ctx.shot(0);
           } else {
             const tt = 0.85;
@@ -150,7 +155,7 @@ export class Defense {
           const ty = look.kind === 'crow' ? 3.4 : 1.3 * (look.kind === 'colossus' ? 2 : 1);
           const dl = Math.hypot(lp.x - x, lp.z - z) || 1;
           const ox = x + ((lp.x - x) / dl) * 0.35, oz = z + ((lp.z - z) / dl) * 0.35;
-          if (sk('d2')) {
+          if (sk('d2') || d.pierce) {
             // laser atravessa: estende o feixe e fere todos na linha
             const ex = x + ((lp.x - x) / dl) * d.range, ez = z + ((lp.z - z) / dl) * d.range;
             this.beam(ox, 1.7, oz, ex, ty, ez);
@@ -158,10 +163,10 @@ export class Defense {
               if (zb.dead || zb.burrowed || zb === look) continue;
               const vx = ex - x, vz = ez - z, L = vx * vx + vz * vz;
               const u = Math.max(0, Math.min(1, ((zb.g.position.x - x) * vx + (zb.g.position.z - z) * vz) / L));
-              if ((x + vx * u - zb.g.position.x) ** 2 + (z + vz * u - zb.g.position.z) ** 2 < 0.8 && H.hit(zb, d.dmg * m)) this.killBy(zb, t);
+              if ((x + vx * u - zb.g.position.x) ** 2 + (z + vz * u - zb.g.position.z) ** 2 < 0.8 && H.hit(zb, d.dmg * m, d.slow ? { slow: 0.5, slowT: 1.5 } : {})) this.killBy(zb, t);
             }
           } else this.beam(ox, 1.7, oz, lp.x, ty, lp.z);
-          if (H.hit(look, d.dmg * m)) this.killBy(look, t);
+          if (H.hit(look, d.dmg * m, d.slow ? { slow: 0.5, slowT: 1.5 } : {})) this.killBy(look, t);
           this.ctx.shot(2);
           break;
         }
@@ -172,7 +177,7 @@ export class Defense {
           const close = (zb.g.position.x - x) ** 2 + (zb.g.position.z - z) ** 2 < 2.2;
           if (this.charge[t] < 1 && !close) break;
           this.charge[t] = 0;
-          H.each(x, z, 4.5, (o) => { if (H.hit(o, d.dmg * m, { ignoreBurrow: true, knock: this.v.set(o.g.position.x - x, 0, o.g.position.z - z).normalize().multiplyScalar(8) })) this.killBy(o, -1); }, true);
+          H.each(x, z, d.radius ?? 4.5, (o) => { if (H.hit(o, d.dmg * m, { ignoreBurrow: true, knock: this.v.set(o.g.position.x - x, 0, o.g.position.z - z).normalize().multiplyScalar(8) })) this.killBy(o, -1); }, true);
           this.ctx.boom(x, z);
           T.s[t] = 3; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0;
           farm.markDirty();
@@ -236,10 +241,11 @@ export class Defense {
 
   private updateProjs(dt: number) {
     const H = this.horde;
-    const counts = [0, 0, 0];
+    const counts = [0, 0, 0, 0];
     for (let i = this.projs.length - 1; i >= 0; i--) {
       const p = this.projs[i];
       p.life -= dt;
+      if (p.kind === 3 && Math.random() < 0.5) this.fx.spawn(p.x, p.y, p.z, 0xffa02a, 1, 0.1, 0.3, -1, 0.3);
       if (p.kind === 1) p.vy -= 9.8 * dt;
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
       let done = false;
@@ -259,7 +265,7 @@ export class Defense {
           const dx = zp.x - p.x, dz = zp.z - p.z, dy = zy - p.y;
           if (dx * dx + dz * dz < 0.5 * sc * sc && Math.abs(dy) < 1.1 * sc) {
             this.v.set(p.vx, 0, p.vz).normalize().multiplyScalar(p.player ? 3 : 1.5);
-            if (H.hit(zb, p.dmg, { knock: this.v })) { if (p.player) this.ctx.kill(zb, 'player'); else this.killBy(zb, p.src); }
+            if (H.hit(zb, p.dmg, { knock: this.v, poison: p.burn })) { if (p.player) this.ctx.kill(zb, 'player'); else this.killBy(zb, p.src); }
             done = true; break;
           }
         }

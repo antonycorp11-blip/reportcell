@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { game, fmt, xpNeed, era, siloCap, siloUsed, canCap, lv, legacyGain, vitality } from './state';
-import { CROPS, ERAS, ERA_ICONS, GOALS, HAND_TOOLS, IMPLEMENTS, ITEMS, UPGRADES, upCost, type Tab } from './data';
+import { CROPS, isCropUnlocked, ERAS, ERA_ICONS, GOALS, HAND_TOOLS, IMPLEMENTS, ITEMS, UPGRADES, upCost, type Tab } from './data';
 import { price, trend } from './economy';
 import { PARCELS, owned, isNextParcel } from './farm';
 import { parcelPrice, parcelLevel } from './world';
@@ -150,7 +150,7 @@ function renderPanel() {
       return `<div class="item"><div class="ic">${it.icon}</div><div class="it"><b>${it.name}</b> <span class="lvl">${q} un.</span><p>${fmt(p)} / un. ${arrow}</p></div>
         <button class="buy" data-a="sell" data-v="${id}">Vender<br>${fmt(p * q)}</button></div>`;
     }).join('');
-    const prices = CROPS.filter((c) => c.level <= s.level).map((c) => {
+    const prices = CROPS.filter((c, i) => isCropUnlocked(s, i)).map((c) => {
       const tr = trend(c.id);
       return `<span class="chip">${c.icon} ${fmt(price(c.id))} ${tr > 0.004 ? '<span class="up">▲</span>' : tr < -0.004 ? '<span class="dn">▼</span>' : ''}</span>`;
     }).join('');
@@ -442,7 +442,8 @@ export function renderCropbar(inTractor: boolean, wallSel = lastWall) {
     return;
   }
   cb.innerHTML = CROPS.map((c, i) => {
-    const lock = s.level < c.level;
+    if (c.mut && !isCropUnlocked(s, i)) return '';
+    const lock = !isCropUnlocked(s, i);
     return `<button class="crop ${i === s.crop ? 'on' : ''} ${lock ? 'locked' : ''}" data-i="${i}" ${lock ? 'disabled' : ''}><span>${lock ? '🔒' : c.icon}</span><small>${lock ? 'Nv ' + c.level : '$' + c.seed}</small></button>`;
   }).join('');
   cb.querySelectorAll('button').forEach((b) => tap(b as HTMLElement, () => H.crop(Number((b as HTMLElement).dataset.i))));
