@@ -85,7 +85,44 @@ export class Player {
     this.pitch = Math.max(-1.45, Math.min(1.25, this.pitch - dy));
   }
 
-  use() { this.swing = 1; }
+  private step = 0;
+  use(step = 0) { this.swing = 1; this.step = step; }
+
+  /** Troca o modelo da arma na mão. */
+  setWeapon(id: string) {
+    const g = this.tools[4];
+    g.clear();
+    const add = (w: number, h: number, d: number, c: number, x: number, y: number, z: number, rx = 0, rz = 0) => { const m = bx(g, w, h, d, c, x, y, z); m.rotation.x = rx; m.rotation.z = rz; m.castShadow = false; return m; };
+    if (id === 'axe') {
+      add(0.06, 0.06, 1.05, 0x6b4425, 0, 0, -0.05);
+      add(0.05, 0.36, 0.3, 0x9aa4ae, 0, 0.12, -0.55); add(0.06, 0.38, 0.06, 0xe8eef2, 0, 0.12, -0.72);
+      add(0.07, 0.1, 0.12, 0xb3392b, 0, -0.02, -0.42);
+      g.rotation.set(0.6, 0.15, -0.25);
+    } else if (id === 'scythe') {
+      add(0.05, 0.05, 0.9, 0x4a3a2a, 0, 0, 0);
+      for (const s of [-1, 1]) { const b = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.02, 4, 14, Math.PI), mat(0xd8dde3)); b.position.set(s * 0.03, 0.15, -0.45 * (s > 0 ? 1 : -0.1)); b.rotation.set(0, Math.PI / 2, s * 0.6); g.add(b); }
+      g.rotation.set(0.4, 0, -0.4);
+    } else if (id === 'gun') {
+      add(0.12, 0.14, 0.5, 0x4a5a3a, 0, 0, -0.15);
+      add(0.05, 0.05, 0.55, 0x2a2a2a, 0.03, 0.05, -0.6); add(0.05, 0.05, 0.55, 0x2a2a2a, -0.03, 0.05, -0.6);
+      add(0.1, 0.18, 0.28, 0x8a5a30, 0, -0.08, 0.2, 0.3);
+      add(0.04, 0.12, 0.04, 0x2a2a2a, 0, -0.1, -0.05);
+      add(0.06, 0.06, 0.06, 0x9dff7a, 0, 0.1, -0.2);
+      g.rotation.set(0.05, 0.05, 0);
+    } else if (id === 'flame') {
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.42, 10), mat(0xc8241a)); t.rotation.x = Math.PI / 2; t.position.set(0, -0.05, 0); g.add(t);
+      add(0.05, 0.05, 0.5, 0x3a3a3a, 0, 0.05, -0.4); add(0.09, 0.09, 0.08, 0xffa02a, 0, 0.05, -0.66);
+      add(0.08, 0.06, 0.12, 0x3d8a2a, 0, 0.12, 0.05);
+      g.rotation.set(0.05, 0.05, 0);
+    } else {
+      add(0.05, 0.05, 1.0, 0x6b4425, 0, 0, -0.05); add(0.2, 0.05, 0.08, 0x6b4425, 0, 0, 0.45);
+      const b = add(0.26, 0.03, 0.34, 0x8a9098, 0, 0, -0.68); b.rotation.x = 0.1;
+      add(0.04, 0.02, 0.3, 0xb53a2a, 0.08, 0.02, -0.68);
+      g.rotation.set(0.7, 0.2, -0.3);
+    }
+    this.weaponId = id;
+  }
+  private weaponId = 'pa';
 
   forward(out: THREE.Vector3) { return out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
 
@@ -115,6 +152,12 @@ export class Player {
     this.holder.position.set(0.46 + bx2, -0.44 + by2 - Math.max(0, -sw) * 0.3, -0.78 + Math.max(0, sw) * 0.08);
     if (this.tool === 2) this.holder.rotation.set(0, 0, sw * 0.7);
     else if (this.tool === 1) this.holder.rotation.set(sw * 0.5, 0, sw * 0.5);
+    else if (this.tool === 4) {
+      const ranged = this.weaponId === 'gun' || this.weaponId === 'flame';
+      if (ranged) { this.holder.rotation.set(-Math.max(0, sw) * 0.35, 0, 0); this.holder.position.z += Math.max(0, sw) * 0.18; this.holder.position.x -= 0.2; }
+      else if (this.step === 3) this.holder.rotation.set(-0.3 * sw, sw * Math.PI * 2, sw * 0.6);
+      else { const dir = this.step === 2 ? -1 : 1; this.holder.rotation.set(-Math.max(0, sw) * 0.6, dir * (sw - 0.5) * 1.6 * (sw > 0.05 ? 1 : 0), dir * sw * 1.2); }
+    }
     else this.holder.rotation.set(-Math.max(0, sw) * 1.1, 0, 0);
   }
 }

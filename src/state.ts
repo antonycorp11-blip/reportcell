@@ -34,6 +34,7 @@ export interface State {
   res: Record<string, number>;
   entries: number[];
   buffs: Record<string, number>;
+  weapon: string;
 }
 
 export const DAY_LEN = 240;
@@ -53,7 +54,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
     skills: {}, tpCam: true,
-    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 150, walls: [], res: { wood: 12, metal: 3, mseed: 0, food: 2 }, entries: [], buffs: {},
+    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 150, walls: [], res: { wood: 12, metal: 3, mseed: 0, food: 2 }, entries: [], buffs: {}, weapon: 'pa',
   };
 }
 

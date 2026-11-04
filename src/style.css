@@ -510,3 +510,7 @@ body.warn #hud #phase { background: rgba(70, 10, 10, 0.85); border-color: #ff5a3
 .cst { display: inline-flex; align-items: center; gap: 2px; background: #f3ead6; border-radius: 99px; padding: 0 0.5em; font-weight: 600; color: #4a3a20; font-size: 0.95em; }
 .cst.no { background: #ffd9d0; color: #b0301a; }
 .vi.fam { font-size: 0.9em; }
+
+.float.dmg { color: #fff; font-size: 1.05em; }
+.float.crit { color: #ffe35a; font-size: 1.6em; text-shadow: 0 2px 0 #b03a0a, 0 0 12px rgba(255, 120, 0, 0.8); }
+.crop .svgi { width: 1.4em; height: 1.4em; color: #4a3a20; }

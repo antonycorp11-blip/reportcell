@@ -123,6 +123,8 @@ function applyState() {
   recalcStats();
   planNext();
   player.setTool(s.tool);
+  if (!hasWeapon(s.weapon)) s.weapon = 'pa';
+  player.setWeapon(s.weapon);
   if (s.inTractor && !lv('tractor')) s.inTractor = false;
   player.showTool(!s.inTractor);
   ui.invalidateBars();
@@ -271,6 +273,7 @@ ui.initUI({
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
   startNight: () => startNight(),
   npc: (v: string) => npcAction(v),
+  weapon: (id: string) => { if (!hasWeapon(id)) return; s.weapon = id; player.setWeapon(id); sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${WEAPONS[id].name} · ${WEAPONS[id].desc}`); },
   restart: () => restart(),
   open() { input.enabled = false; input.action = false; if (document.pointerLockElement) document.exitPointerLock(); },
   close() { input.enabled = true; if (!isTouch && playing) canvas.requestPointerLock?.(); },
@@ -763,7 +766,7 @@ function eyeTint() {
 }
 
 function hurtPlayer(d: number) {
-  if (deadT > 0 || over) return;
+  if (deadT > 0 || over || dashT > 0) return;
   d *= diffK()[2];
   if (s.inTractor) d *= 0.4;
   playerHp -= d;
@@ -848,29 +851,82 @@ function aimTarget(maxAng: number, range: number): Zombie | null {
   return best;
 }
 
+const WEAPONS: Record<string, { name: string; icon: string; kind: 'melee' | 'gun' | 'flame'; dmg: number; cd: number; range: number; arc: number; knock: number; cost?: Record<string, number>; desc: string }> = {
+  pa: { name: 'Pá', icon: 'hammer', kind: 'melee', dmg: 18, cd: 0.5, range: 3.0, arc: 0.35, knock: 5, desc: 'Equilibrada. Combo de 3 golpes com giro.' },
+  axe: { name: 'Machado', icon: 'hammer', kind: 'melee', dmg: 36, cd: 0.8, range: 3.3, arc: 0.25, knock: 9, cost: { wood: 6, metal: 4 }, desc: 'Lento e devastador. Arremessa zumbis longe.' },
+  scythe: { name: 'Foice Dupla', icon: 'sword', kind: 'melee', dmg: 13, cd: 0.28, range: 3.6, arc: -0.25, knock: 3, cost: { metal: 6, mseed: 1 }, desc: 'Rapidíssima e corta tudo à sua volta.' },
+  gun: { name: 'Espingarda de Sementes', icon: 'target', kind: 'gun', dmg: 10, cd: 0.75, range: 22, arc: 0, knock: 3, cost: { metal: 10, wood: 4 }, desc: 'Leque de 6 sementes. Ótima contra grupos.' },
+  flame: { name: 'Lança-Chamas de Pimenta', icon: 'flame', kind: 'flame', dmg: 46, cd: 0.08, range: 7.5, arc: 0.82, knock: 0.5, cost: { metal: 14, mseed: 3 }, desc: 'Cone de fogo contínuo que queima tudo.' },
+};
+const hasWeapon = (id: string) => id === 'pa' || lv('w_' + id) > 0;
+let comboStep = 0, comboT = -9, hitStop = 0, dashT = 0, dashCd = 0;
+const dashDir = new THREE.Vector3();
+
 function attack() {
-  player.use();
+  const W = WEAPONS[s.weapon] && hasWeapon(s.weapon) ? WEAPONS[s.weapon] : WEAPONS.pa;
   camera.getWorldDirection(aimDir);
   const fwd = new THREE.Vector3(aimDir.x, 0, aimDir.z).normalize();
-  let hitAny = false;
-  horde.each(player.pos.x, player.pos.z, 3.2, (z) => {
-    const v = new THREE.Vector3(z.g.position.x - player.pos.x, 0, z.g.position.z - player.pos.z);
-    if (v.length() > 0.01 && v.normalize().dot(fwd) < 0.35) return;
-    if (z.kind === 'crow' && player.pitch < 0.2) return;
-    hitAny = true;
-    if (horde.hit(z, 18 * (1 + 0.3 * lv('blade')) * pct('udmg') * (s.buffs.pie ? 1.3 : 1), { knock: fwd.clone().multiplyScalar(3.5) })) onKill(z, 'player');
-  });
-  if (hitAny) { sfx.whack(); shake = Math.max(shake, 0.08); }
-  if (lv('seedgun')) {
-    const from = camera.position.clone().addScaledVector(aimDir, 0.8);
-    from.y -= 0.2;
-    defense.fireSeed(from, aimTarget(0.3, 30), aimDir.clone(), 9 * (1 + 0.25 * lv('ammo')) * pct('udmg') * (s.buffs.pie ? 1.3 : 1));
-    sfx.shoot(3);
-    cooldown = 0.38 / pct('tool');
+  const mult = pct('udmg') * (s.buffs.pie ? 1.3 : 1) * (1 + 0.3 * lv('blade'));
+  if (W.kind === 'melee') {
+    comboStep = realTime - comboT < 0.95 ? (comboStep % 3) + 1 : 1;
+    comboT = realTime;
+    const spin = comboStep === 3;
+    player.use(comboStep);
+    let hits = 0;
+    horde.each(player.pos.x, player.pos.z, W.range * (spin ? 1.15 : 1), (z) => {
+      const v = new THREE.Vector3(z.g.position.x - player.pos.x, 0, z.g.position.z - player.pos.z);
+      const d = v.length();
+      if (!spin && d > 0.01 && v.normalize().dot(fwd) < W.arc) return;
+      if (z.kind === 'crow' && player.pitch < 0.15) return;
+      const crit = Math.random() < 0.15;
+      const dmg = W.dmg * mult * (spin ? 1.8 : 1) * (crit ? 2 : 1);
+      const kdir = spin ? v.normalize() : fwd.clone();
+      hits++;
+      const p = z.g.position;
+      ui.float3d(String(Math.round(dmg)), new THREE.Vector3(p.x, 2.2, p.z), camera, crit ? 'crit' : 'dmg');
+      fx.spawn(p.x, 1.3, p.z, 0x8fdc3a, crit ? 22 : 12, 1.4, 4, 9, 0.7);
+      if (horde.hit(z, dmg, { knock: kdir.multiplyScalar(W.knock * (spin ? 1.6 : 1) * (crit ? 1.4 : 1)) })) onKill(z, 'player');
+    });
+    if (hits) { hitStop = spin ? 0.11 : 0.065; shake = Math.max(shake, spin ? 0.28 : 0.14); sfx.whack(); if (spin) sfx.combo(); }
+    else sfx.swing();
+    cooldown = (W.cd * (spin ? 1.35 : 1)) / pct('tool');
+  } else if (W.kind === 'gun') {
+    player.use(1);
+    const from = camera.position.clone().addScaledVector(aimDir, 0.9); from.y -= 0.2;
+    const tgt = aimTarget(0.3, 30);
+    const base = tgt ? new THREE.Vector3(tgt.g.position.x - from.x, (tgt.kind === 'crow' ? 3.4 : 1.2) - from.y, tgt.g.position.z - from.z).normalize() : aimDir.clone();
+    for (let k = 0; k < 6; k++) {
+      const d = base.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.22, (Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.22)).normalize();
+      defense.fireSeed(from, null, d, W.dmg * mult * (1 + 0.25 * lv('ammo')));
+    }
+    fx.spawn(from.x, from.y, from.z, 0xfff2a0, 10, 0.4, 2, 0, 0.2);
+    shake = Math.max(shake, 0.12); sfx.shoot(3); sfx.whack();
+    cooldown = W.cd / pct('tool');
   } else {
-    if (!hitAny) sfx.swing();
-    cooldown = 0.6 / pct('tool');
+    player.use(1);
+    const tip = camera.position.clone().addScaledVector(aimDir, 1.0); tip.y -= 0.25;
+    for (let k = 0; k < 4; k++) {
+      const f = 1 + Math.random() * W.range;
+      fx.spawn(tip.x + aimDir.x * f, tip.y + aimDir.y * f * 0.5, tip.z + aimDir.z * f, Math.random() < 0.5 ? 0xff7a1a : 0xffd23f, 2, f * 0.15, 0.6, -1.5, 0.35);
+    }
+    horde.each(player.pos.x, player.pos.z, W.range, (z) => {
+      const v = new THREE.Vector3(z.g.position.x - player.pos.x, 0, z.g.position.z - player.pos.z);
+      if (v.length() > 0.01 && v.normalize().dot(fwd) < W.arc) return;
+      if (horde.hit(z, W.dmg * W.cd * mult, { poison: 8 })) onKill(z, 'player');
+    });
+    if (soundT <= 0) { sfx.shoot(1); soundT = 0.12; }
+    cooldown = W.cd;
   }
+}
+
+function dash() {
+  if (dashCd > 0 || s.inTractor || aerial || deadT > 0) return;
+  const [mx, my] = moveVec();
+  const fx2 = -Math.sin(player.yaw), fz = -Math.cos(player.yaw), rx = Math.cos(player.yaw), rz = -Math.sin(player.yaw);
+  if (Math.hypot(mx, my) > 0.2) dashDir.set(fx2 * my + rx * mx, 0, fz * my + rz * mx).normalize(); else dashDir.set(fx2, 0, fz);
+  dashT = 0.2; dashCd = 1.1;
+  sfx.swing();
+  fx.spawn(player.pos.x, 0.3, player.pos.z, 0xd8c8a0, 14, 1.2, 1.5, 6, 0.6);
 }
 
 const buildPt = new THREE.Vector3();
@@ -966,11 +1022,11 @@ function openNpc(who: Who) {
   npcWho = who;
   const line = LINES[who][(Math.random() * LINES[who].length) | 0];
   const opt = (id: string, name: string, desc: string, cost: string, ok: boolean, done = false) =>
-    `<div class="item ${done ? 'maxed' : ''}"><div class="it"><b>${name}</b><p>${desc}</p><p class="costs">${cost}</p></div>${done ? '<div class="done">✔</div>' : `<button class="buy" data-a="npc" data-v="${id}" ${ok ? '' : 'disabled'}>${id.startsWith('w:') ? 'Construir' : 'Fazer'}</button>`}</div>`;
+    `<div class="item ${done ? 'maxed' : ''}"><div class="it"><b>${name}</b><p>${desc}</p><p class="costs">${cost}</p></div>${done ? '<div class="done">✔</div>' : `<button class="buy" data-a="npc" data-v="${id}" ${ok ? '' : 'disabled'}>${id.startsWith('w:') ? 'Construir' : id.startsWith('f:') ? 'Forjar' : 'Fazer'}</button>`}</div>`;
   let body = '';
   if (who === 'ana') body = ['eat', 'soup', 'bread', 'pie'].map((k) => { const r = RECIPES[k]; return opt('r:' + k, r.name, r.desc + (r.buff && s.buffs[r.buff] ? ' · <b>ativo</b>' : ''), costHtml(r.need, r.inv), canPay(r.need, r.inv) && !(r.buff && s.buffs[r.buff])); }).join('');
   if (who === 'bia' || who === 'leo') body = opt('r:fert', RECIPES.fert.name, RECIPES.fert.desc + (s.buffs.fert ? ' · <b>ativo</b>' : ''), costHtml(RECIPES.fert.need, RECIPES.fert.inv), canPay(RECIPES.fert.need, RECIPES.fert.inv) && !s.buffs.fert) + opt('w:kidcans', WORKSHOP.kidcans.name, WORKSHOP.kidcans.desc, costHtml(WORKSHOP.kidcans.need), canPay(WORKSHOP.kidcans.need), lv('kidcans') >= 1);
-  if (who === 'ze') body = '<p class="note">🔧 Oficina — defesas da casa</p>' + ['plates', 'porch', 'spot', 'turret'].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
+  if (who === 'ze') body = '<p class="note">⚔️ Forja — armas</p>' + Object.entries(WEAPONS).filter(([id]) => id !== 'pa').map(([id, w]) => opt('f:' + id, w.name, w.desc, costHtml(w.cost!), canPay(w.cost!), hasWeapon(id))).join('') + '<p class="note">🔧 Oficina — defesas da casa</p>' + ['plates', 'porch', 'spot', 'turret'].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
     + opt('fix', 'Consertar todas as entradas', 'O Vô prega tábuas em tudo que está quebrado', costHtml({ wood: Math.max(1, missingPlanks()) }), missingPlanks() > 0 && (s.res.wood || 0) >= missingPlanks(), missingPlanks() === 0);
   ui.openPanel('npc', `<div class="npc"><div class="np ${who}">${icon(who === 'ana' ? 'food' : who === 'ze' ? 'hammer' : 'drop')}</div><div><b>${FAMILY[who].name}</b> <small>${FAMILY[who].role}</small><p class="say">“${line}”</p></div></div>${body}`);
 }
@@ -987,6 +1043,13 @@ function npcAction(v: string) {
     if (r.buff) s.buffs[r.buff] = 1;
     if (id === 'soup') playerHp = playerMax();
     sfx.buy(); ui.toast(`🍲 ${r.name}! ${r.desc}`, 'good');
+  } else if (kind === 'f') {
+    const w = WEAPONS[id];
+    if (hasWeapon(id) || !payRes(w.cost!)) return;
+    s.up['w_' + id] = 1;
+    s.weapon = id; player.setWeapon(id);
+    sfx.buy(); ui.toast(`⚔️ ${w.name} forjada e equipada!`, 'good');
+    ui.invalidateBars(); ui.renderToolbar(s.inTractor);
   } else if (kind === 'w') {
     const w = WORKSHOP[id];
     if (lv(id) >= w.max || !payRes(w.need)) return;
@@ -1049,7 +1112,8 @@ initInput(canvas, document.getElementById('joy')!, document.getElementById('joyK
 });
 holdButton(document.getElementById('btnAction')!, (v) => { input.action = v; });
 holdButton(document.getElementById('btnInteract')!, (v) => { if (v) press('KeyE'); });
-holdButton(document.getElementById('btnSprint')!, (v) => { if (v) { input.sprint = !input.sprint; document.getElementById('btnSprint')!.classList.toggle('on', input.sprint); } });
+holdButton(document.getElementById('btnSprint')!, (v) => { if (v) press('Dash'); });
+document.getElementById('btnSprint')!.textContent = '💨';
 
 function handleKeys() {
   for (let i = 0; i < 7; i++) if (consume('Digit' + (i + 1))) selectTool(i);
@@ -1060,6 +1124,7 @@ function handleKeys() {
   }
   if (consume('KeyV')) toggleCam();
   if (consume('KeyQ')) toggleAerial();
+  if (consume('KeyR')) { const ids = Object.keys(WEAPONS).filter(hasWeapon); const k = ids.indexOf(s.weapon); const id = ids[(k + 1) % ids.length]; s.weapon = id; player.setWeapon(id); ui.renderCropbar(s.inTractor); ui.toast(`⚔️ ${WEAPONS[id].name}`); }
   if (aerial) {
     if (consume('WheelDown')) aer.th = Math.min(140, aer.th * 1.15);
     if (consume('WheelUp')) aer.th = Math.max(22, aer.th / 1.15);
@@ -1183,6 +1248,9 @@ function frame(now: number) {
       ui.setTileInfo('');
     } else {
       const sp = deadT > 0 ? 0 : walkSpeed() * (input.sprint || Math.hypot(input.joyX, input.joyY) > 0.93 ? 1.6 : 1);
+      dashCd -= dt;
+      if (consume('Space') || consume('Dash')) dash();
+      if (dashT > 0) { dashT -= dt; player.pos.addScaledVector(dashDir, 17 * dt); resolve(player.pos, 0.4); if (Math.random() < 0.5) fx.spawn(player.pos.x, 0.2, player.pos.z, 0xd8c8a0, 2, 0.6, 1, 6, 0.4); }
       player.update(dt, mx, my, sp);
       cooldown -= dt;
       if (sk('m5') && s.can < canCap()) { canAcc += dt * 0.6; if (canAcc >= 1) { canAcc -= 1; s.can++; hudDirty = true; } }
@@ -1233,13 +1301,15 @@ function frame(now: number) {
   view.update(dt);
   life.update(dt, realTime, camera.position);
   if (playing && !over) {
-    horde.update(dt, realTime, {
+    const simDt = hitStop > 0 ? dt * 0.08 : dt;
+    hitStop -= dt;
+    horde.update(simDt, realTime, {
       player: player.pos, tractor: lv('tractor') ? tractor.group.position : null, tractorSpeed: s.inTractor ? tractor.speed : 0, camera,
       hurtPlayer, hurtBase, kill: (z) => onKill(z, 'plant'), ramHit, house,
       walls, speedMult: nightMod === 'blood' ? 1.3 : 1,
     });
     walls.update(dt, realTime, camera);
-    defense.update(dt, s.phase === 'night', camera.position);
+    defense.update(simDt, s.phase === 'night', camera.position);
     shotT -= dt;
   }
   if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * shake * 0.6; camera.position.y += (Math.random() - 0.5) * shake * 0.6; }

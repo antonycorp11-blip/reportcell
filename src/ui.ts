@@ -17,7 +17,7 @@ export interface Handlers {
   open(): void; close(): void;
   setting(k: string, v: unknown): void; reset(): void; fullscreen(): void;
   learn(id: string): void; toggleCam(): void;
-  startNight(): void; restart(): void; wall(i: number): void; npc(v: string): void;
+  startNight(): void; restart(): void; wall(i: number): void; npc(v: string): void; weapon(id: string): void;
   aerial(): void; zoom(d: number): void;
 }
 let H: Handlers;
@@ -122,7 +122,7 @@ function renderPanel() {
     tabs = `<div class="tabs scroll">${T.map(([k, n]) => `<button data-a="tab" data-v="${k}" class="${shopTab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     if (shopTab === 'land') content = landTab();
     else if (shopTab === 'legacy') content = legacyTab();
-    else content = UPGRADES.filter((u) => u.tab === shopTab).map((u) => {
+    else content = UPGRADES.filter((u) => u.tab === shopTab && u.id !== 'seedgun').map((u) => {
       const l = lv(u.id); const maxed = l >= u.max; const lock = u.req?.(s) ?? null; const cost = upCost(u, l);
       return `<div class="item ${maxed ? 'maxed' : ''} ${lock ? 'locked' : ''}">
         <div class="ic">${u.icon}</div>
@@ -420,12 +420,19 @@ export function renderCropbar(inTractor: boolean, wallSel = lastWall) {
   const s = game.s;
   lastWall = wallSel;
   const building = document.body.classList.contains('aerial') || (!inTractor && s.tool === 6);
-  const show = building || (inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 5);
+  const arming = !inTractor && s.tool === 4 && !building;
+  const show = building || arming || (inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 5);
   const cb = $('cropbar');
   cb.classList.toggle('hidden', !show);
-  const key = `${show}|${building}|${s.crop}|${s.level}|${wallSel}`;
+  const key = `${show}|${building}|${arming}|${s.weapon}|${Object.keys(s.up).join()}|${s.crop}|${s.level}|${wallSel}`;
   if (!show || key === cropKey) return;
   cropKey = key;
+  if (arming) {
+    const W: [string, string, string][] = [['pa', 'Pá', 'hammer'], ['axe', 'Machado', 'hammer'], ['scythe', 'Foice', 'sword'], ['gun', 'Espingarda', 'target'], ['flame', 'Chamas', 'flame']];
+    cb.innerHTML = W.map(([id, n, ic]) => { const own = id === 'pa' || (s.up['w_' + id] || 0) > 0; return `<button class="crop wide ${s.weapon === id ? 'on' : ''} ${own ? '' : 'locked'}" data-w="${id}" ${own ? '' : 'disabled'}><span>${icon(own ? ic : 'chain')}</span><small>${own ? n : 'Vô Zé'}</small></button>`; }).join('');
+    cb.querySelectorAll('button').forEach((b) => tap(b as HTMLElement, () => H.weapon((b as HTMLElement).dataset.w!)));
+    return;
+  }
   if (building) {
     cb.innerHTML = WALLS.map((w, i) => {
       const lock = s.level < w.level;

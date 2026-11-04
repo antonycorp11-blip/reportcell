@@ -53,8 +53,7 @@ export const UPGRADES: UpDef[] = [
   { id: 'fort', tab: 'def', name: 'Porão Reforçado', icon: '🏠', max: 6, base: 150, mult: 2.1, desc: (l) => `Vida da família: ${Math.round(150 * (1 + 0.5 * l))} → ${Math.round(150 * (1 + 0.5 * (l + 1)))}` },
   { id: 'blade', tab: 'def', name: 'Pá Afiada', icon: '🗡️', max: 5, base: 90, mult: 2, desc: (l) => `+30% de dano corpo a corpo por nível (atual +${l * 30}%)` },
   { id: 'medkit', tab: 'def', name: 'Kit Médico', icon: '❤️', max: 3, base: 200, mult: 2.5, desc: (l) => `Sua vida: ${100 + 40 * l} → ${100 + 40 * (l + 1)} e regenera mais rápido` },
-  { id: 'seedgun', tab: 'def', name: 'Lança-Sementes', icon: '🔫', max: 1, base: 500, mult: 1, desc: () => 'Sua arma passa a atirar sementes à distância (mira automática)', req: L(3) },
-  { id: 'ammo', tab: 'def', name: 'Munição Turbinada', icon: '💥', max: 5, base: 350, mult: 2.1, desc: (l) => `+25% de dano do Lança-Sementes por nível (atual +${l * 25}%)`, req: U('seedgun', 'Lança-Sementes') },
+  { id: 'ammo', tab: 'def', name: 'Munição Turbinada', icon: '💥', max: 5, base: 350, mult: 2.1, desc: (l) => `+25% de dano da Espingarda de Sementes por nível (atual +${l * 25}%)`, req: U('w_gun', 'Espingarda (forje com o Vô Zé)') },
 
   // Agronomia
   { id: 'growth', tab: 'agro', name: 'Adubo Orgânico', icon: '🧪', max: 10, base: 60, mult: 1.75, desc: (l) => `Plantas crescem +12% mais rápido por nível (atual: +${l * 12}%)` },
@@ -97,7 +96,7 @@ export const GOALS: Goal[] = [
   { text: 'Venda colheita no Mercado 📈', prog: (s) => [Math.min(s.stats.sold, 1), 1], reward: 40 },
   { text: 'Sobreviva à 3ª noite', prog: (s) => [s.nights, 3], reward: 150 },
   { text: 'Compre o Trator (atropela zumbis!)', prog: (s) => [has(s, 'tractor'), 1], reward: 100 },
-  { text: 'Compre o Lança-Sementes', prog: (s) => [has(s, 'seedgun'), 1], reward: 150 },
+  { text: 'Forje uma arma nova com o Vô Zé', prog: (s) => [Math.min(1, has(s, 'w_axe') + has(s, 'w_scythe') + has(s, 'w_gun') + has(s, 'w_flame')), 1], reward: 150 },
   { text: 'Construa uma expansão da fazenda', prog: (s) => [s.parcels.length, 2], reward: 150 },
   { text: 'Derrote o Colosso da 5ª noite', prog: (s) => [s.nights, 5], reward: 500 },
   { text: 'Elimine 300 zumbis', prog: (s) => [s.stats.kills, 300], reward: 600 },
