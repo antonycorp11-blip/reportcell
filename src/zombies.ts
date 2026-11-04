@@ -4,6 +4,7 @@ import { resolve } from './physics';
 import * as farm from './farm';
 import type { FX } from './fx';
 import type { Walls } from './walls';
+import { buildZombie } from './zmodels';
 
 export type ZKind = 'walker' | 'runner' | 'brute' | 'digger' | 'crow' | 'colossus';
 
@@ -23,6 +24,7 @@ export interface Zombie {
   dead: number; burrowed: boolean; mound?: THREE.Mesh; bar: THREE.Group; barFg: THREE.Mesh;
   hitT: number; ramT: number; groan: number; vx: number; vz: number; eating: boolean;
   path: [number, number][] | null; wp: number; ox: number; oz: number;
+  torso: THREE.Object3D; head: THREE.Object3D; lean: number;
 }
 
 const BASE = new THREE.Vector3(-17, 0, 12);
@@ -50,6 +52,7 @@ export class Horde {
   list: Zombie[] = [];
   private scene: THREE.Scene;
   private fx: FX;
+  outline = true;
 
   constructor(scene: THREE.Scene, fx: FX) { this.scene = scene; this.fx = fx; }
 
@@ -57,38 +60,15 @@ export class Horde {
 
   spawn(kind: ZKind, x: number, z: number, hpMult: number, path: [number, number][] | null = null) {
     const d = ZDEF[kind];
-    const g = new THREE.Group();
-    const body = new THREE.Group(); g.add(body);
-    const skin = mat(d.skin), shirt = mat(d.shirt);
-    const legs: THREE.Object3D[] = [], arms: THREE.Object3D[] = [];
-    if (kind === 'crow') {
-      const b = new THREE.Mesh(ico(0.28, 0), shirt); b.scale.set(0.8, 0.7, 1.4); body.add(b);
-      const h = new THREE.Mesh(ico(0.16, 0), shirt); h.position.set(0, 0.12, -0.38); body.add(h);
-      const beak = new THREE.Mesh(geo.beak, mat(0x6a7a3a)); beak.rotation.x = -Math.PI / 2; beak.position.set(0, 0.1, -0.6); body.add(beak);
-      for (const sx of [-1, 1]) {
-        const e = new THREE.Mesh(geo.eye, eyeMat); e.position.set(sx * 0.08, 0.18, -0.5); body.add(e);
-        const w = new THREE.Mesh(geo.wing, shirt); w.scale.x = sx; body.add(w); arms.push(w);
-      }
-      body.position.y = 3.4;
-    } else {
-      const torso = new THREE.Mesh(geo.torso, shirt); torso.position.y = 1.16; torso.rotation.x = 0.18; body.add(torso);
-      const head = new THREE.Mesh(geo.head, skin); head.position.set(0, 1.72, -0.08); head.rotation.z = (Math.random() - 0.5) * 0.4; body.add(head);
-      for (const sx of [-1, 1]) {
-        const e = new THREE.Mesh(geo.eye, eyeMat); e.position.set(sx * 0.1, 1.76, -0.29); body.add(e);
-        const a = new THREE.Group(); a.position.set(sx * 0.37, 1.46, -0.02);
-        const am = new THREE.Mesh(geo.limb, skin); a.add(am); a.rotation.x = -1.35; body.add(a); arms.push(a);
-        const l = new THREE.Group(); l.position.set(sx * 0.14, 0.82, 0);
-        l.add(new THREE.Mesh(geo.leg, mat(pants[(Math.random() * pants.length) | 0]))); body.add(l); legs.push(l);
-      }
-      if (kind === 'colossus') { for (const sx of [-1, 1]) { const sp = new THREE.Mesh(cone(0.12, 0.4, 4), mat(0xd8d0b8)); sp.position.set(sx * 0.2, 1.62, 0.1); sp.rotation.x = 0.6; body.add(sp); } }
-    }
-    body.scale.setScalar(d.scale);
-    g.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.parent !== null) (o as THREE.Mesh).castShadow = true; });
+    const parts = buildZombie(kind, this.outline);
+    const g = parts.root;
+    const body = parts.body;
+    const legs: THREE.Object3D[] = parts.legs, arms: THREE.Object3D[] = parts.arms;
     // barra de vida
     const bar = new THREE.Group();
     const bg = new THREE.Mesh(geo.bar, barBg); bg.renderOrder = 20; bar.add(bg);
     const fg = new THREE.Mesh(geo.bar, barFgMat); fg.renderOrder = 21; fg.position.z = 0.001; bar.add(fg);
-    bar.position.y = kind === 'crow' ? 4.2 : 2.2 * d.scale + 0.2;
+    bar.position.y = kind === 'crow' ? 4.2 : 2.0 * d.scale + 0.25;
     bar.scale.setScalar(kind === 'colossus' ? 2.4 : 1);
     bar.visible = false;
     g.add(bar);
@@ -97,7 +77,7 @@ export class Horde {
     this.scene.add(g);
     const zb: Zombie = {
       kind, g, hp: d.hp * hpMult, max: d.hp * hpMult, speed: d.speed * (0.9 + Math.random() * 0.2), dps: d.dps * (1 + (hpMult - 1) * 0.5), reward: Math.round(d.reward * (1 + (hpMult - 1) * 0.4)),
-      legs, arms, body, walk: Math.random() * 6, slowT: 0, slowK: 1, poisonT: 0, poisonD: 0, dead: 0,
+      legs, arms, body, torso: parts.torso, head: parts.head, lean: parts.torso.rotation.x, walk: Math.random() * 6, slowT: 0, slowK: 1, poisonT: 0, poisonD: 0, dead: 0,
       burrowed: kind === 'digger', bar, barFg: fg, hitT: 0, ramT: 0, groan: 2 + Math.random() * 8, vx: 0, vz: 0, eating: false,
       path: kind === 'crow' ? null : path, wp: 1, ox: (Math.random() - 0.5) * 2.4, oz: (Math.random() - 0.5) * 2.4,
     };
@@ -250,16 +230,27 @@ export class Horde {
       }
       z.walk += dt * speed * 4.5;
       const sw = Math.sin(z.walk) * 0.6;
+      const hitK = z.hitT > 0 ? z.hitT / 0.12 : 0;
+      z.g.scale.set(1 + hitK * 0.12, 1 - hitK * 0.12, 1 + hitK * 0.12);
       if (z.kind === 'crow') {
         const f = Math.sin(time * 14 + z.walk) * 0.7;
-        z.arms[0].rotation.z = f; z.arms[1].rotation.z = -f;
-        z.body.position.y = 3.4 + Math.sin(time * 3 + z.walk) * 0.2;
+        z.arms[0].rotation.z = -f; z.arms[1].rotation.z = f;
+        z.body.position.y = Math.sin(time * 3 + z.walk) * 0.2;
+        z.head.rotation.z = Math.sin(time * 4 + z.walk) * 0.25;
       } else {
-        z.legs[0].rotation.x = sw; z.legs[1].rotation.x = -sw;
-        const atk = attacking || z.eating ? Math.sin(time * 10) * 0.5 : 0;
-        z.arms[0].rotation.x = -1.35 + sw * 0.25 + atk; z.arms[1].rotation.x = -1.35 - sw * 0.25 - atk;
-        z.body.rotation.z = Math.sin(z.walk * 0.5) * 0.08;
-        z.body.position.y = z.eating ? -0.25 : 0;
+        const moving = speed > 0.05 ? 1 : 0;
+        z.legs[0].rotation.x = sw * moving; z.legs[1].rotation.x = -sw * moving;
+        const atk = attacking || z.eating ? Math.sin(time * 11 + z.walk) * 0.6 : 0;
+        const reach = z.kind === 'brute' || z.kind === 'colossus' ? 1.1 : 1.4;
+        z.arms[0].rotation.x = reach + sw * 0.3 * moving + atk + Math.sin(time * 2.3 + z.walk) * 0.1;
+        z.arms[1].rotation.x = reach - sw * 0.3 * moving - atk + Math.sin(time * 2.1 + z.walk + 1) * 0.1;
+        z.arms[0].rotation.z = -0.15; z.arms[1].rotation.z = 0.15;
+        // cambaleio
+        z.body.rotation.z = Math.sin(z.walk * 0.5) * 0.12;
+        z.body.position.y = (z.eating ? -0.3 : 0) + Math.abs(Math.cos(z.walk)) * 0.06 * moving;
+        z.torso.rotation.x = z.lean + (z.eating ? 0.6 : 0) + Math.sin(z.walk) * 0.06;
+        z.head.rotation.z = Math.sin(z.walk * 0.5 + 0.8) * 0.3 + 0.15;
+        z.head.rotation.x = Math.sin(time * 1.7 + z.walk) * 0.12 - (z.eating ? 0.4 : 0);
       }
       // barra de vida
       if (z.hp < z.max) {

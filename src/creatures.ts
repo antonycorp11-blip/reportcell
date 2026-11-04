@@ -1,203 +1,261 @@
 import * as THREE from 'three';
-import { part, merge, cone, cyl, ico, box, shade, rng } from './gfx';
 import { T, N, owned, tileX, tileZ, markDirty } from './farm';
+import { rng } from './gfx';
+import { tp, tmerge, hull, sph, cap, cyl, cone, tor, faceCap, faceTex, eye, brow, mouth, blush, bands, TOON, OUTLINE } from './toon';
 import type { FX } from './fx';
 
 type G = THREE.BufferGeometry;
-const W = 0xffffff, K = 0x141414;
+type V3 = [number, number, number];
+interface Model { body: G; head: G; pivot: V3; face: G; tex: THREE.Texture; glow?: G; top: number }
 
-/** Olhos com sobrancelhas bravas, voltados para -z. */
-function eyes(P: G[], y: number, z: number, sep = 0.12, r = 0.075) {
+const K = '#1c140c';
+
+// ---------------------------------------------------------------- rostos
+const faces = {
+  wheat: () => faceTex('wheat', (x) => {
+    eye(x, 88, 118, 34, 40, { px: 0.15, py: 0.15, pr: 15, iris: '#5a8a2a' });
+    eye(x, 168, 118, 34, 40, { px: -0.15, py: 0.15, pr: 15, iris: '#5a8a2a' });
+    brow(x, 52, 70, 118, 92); brow(x, 204, 70, 138, 92);
+    mouth(x, [[86, 176], [170, 176], [150, 200], [106, 200]], '#4a1212', 6);
+  }),
+  corn: () => faceTex('corn', (x) => {
+    eye(x, 90, 120, 30, 34, { px: 0.1, py: 0.1, pr: 13, iris: '#3f7ad8' });
+    eye(x, 166, 124, 30, 26, { px: -0.1, py: 0.1, pr: 12, iris: '#3f7ad8', lid: 0.6 });
+    brow(x, 56, 82, 116, 96); brow(x, 198, 86, 142, 98);
+    blush(x, 64, 168); blush(x, 192, 168);
+  }),
+  sun: () => faceTex('sun', (x) => {
+    // óculos de laser
+    x.fillStyle = '#18202a'; x.strokeStyle = K; x.lineWidth = 7;
+    x.beginPath(); x.roundRect(40, 92, 78, 50, 18); x.fill(); x.stroke();
+    x.beginPath(); x.roundRect(138, 92, 78, 50, 18); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(118, 112); x.lineTo(138, 112); x.stroke();
+    x.shadowColor = '#fff27a'; x.shadowBlur = 16; x.fillStyle = '#ffe94a';
+    x.fillRect(52, 108, 54, 10); x.fillRect(150, 108, 54, 10);
+    x.shadowBlur = 0;
+    mouth(x, [[90, 172], [168, 168], [156, 190], [104, 192]], '#5a1a0a', 0, true);
+  }),
+  pumpkin: () => faceTex('pumpkin', (x) => {
+    x.shadowColor = '#ffcf3a'; x.shadowBlur = 22;
+    x.fillStyle = '#ffd23a';
+    x.beginPath(); x.moveTo(56, 128); x.lineTo(96, 70); x.lineTo(116, 130); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(200, 128); x.lineTo(160, 70); x.lineTo(140, 130); x.closePath(); x.fill();
+    x.fillStyle = '#ffb02a';
+    x.beginPath(); x.moveTo(46, 160);
+    const pts: [number, number][] = [[70, 170], [82, 190], [100, 172], [118, 196], [138, 172], [156, 196], [174, 172], [190, 190], [210, 160], [180, 218], [128, 232], [76, 218]];
+    for (const [a, b] of pts) x.lineTo(a, b);
+    x.closePath(); x.fill();
+    x.fillStyle = '#ffec8a'; x.beginPath(); x.moveTo(118, 148); x.lineTo(128, 132); x.lineTo(138, 148); x.closePath(); x.fill();
+  }),
+  berry: () => faceTex('berry', (x) => {
+    eye(x, 92, 118, 32, 38, { px: 0.25, py: 0.1, pr: 14, iris: '#2a9a3a', lid: 0.55, lidAng: 0.15 });
+    eye(x, 166, 118, 32, 38, { px: 0.25, py: 0.1, pr: 14, iris: '#2a9a3a', lid: 0.55, lidAng: -0.15 });
+    brow(x, 60, 72, 118, 82, 10); brow(x, 196, 72, 140, 82, 10);
+    mouth(x, [[96, 172], [164, 166], [150, 188], [110, 190]], '#5a0f1a', 0, true);
+    x.fillStyle = '#7fe35a'; x.beginPath(); x.ellipse(146, 196, 12, 16, 0, 0, Math.PI * 2); x.fill(); x.lineWidth = 5; x.strokeStyle = K; x.stroke();
+  }),
+  lav: () => faceTex('lav', (x) => {
+    x.strokeStyle = K; x.lineWidth = 9;
+    x.beginPath(); x.arc(92, 118, 26, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
+    x.beginPath(); x.arc(164, 118, 26, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
+    blush(x, 70, 158, 'rgba(255,120,200,0.45)'); blush(x, 186, 158, 'rgba(255,120,200,0.45)');
+    x.fillStyle = '#4a1a4a'; x.beginPath(); x.ellipse(128, 178, 12, 14, 0, 0, Math.PI * 2); x.fill(); x.lineWidth = 6; x.stroke();
+    x.fillStyle = '#fff'; x.font = 'bold 34px sans-serif'; x.fillText('z', 196, 70); x.font = 'bold 24px sans-serif'; x.fillText('z', 222, 44);
+  }),
+  cactus: () => faceTex('cactus', (x) => {
+    eye(x, 90, 124, 28, 30, { px: 0, py: 0.25, pr: 13, lid: 0.7, lidAng: 0.25 });
+    eye(x, 166, 124, 28, 30, { px: 0, py: 0.25, pr: 13, lid: 0.7, lidAng: -0.25 });
+    brow(x, 56, 90, 120, 104, 14); brow(x, 200, 90, 136, 104, 14);
+    mouth(x, [[94, 188], [162, 188], [152, 172], [104, 172]], '#3a1010', 5);
+    // curativo
+    x.save(); x.translate(186, 70); x.rotate(0.5); x.fillStyle = '#f3e3c3'; x.fillRect(-28, -10, 56, 20); x.strokeStyle = K; x.lineWidth = 4; x.strokeRect(-28, -10, 56, 20); x.restore();
+  }),
+  pepper: () => faceTex('pepper', (x) => {
+    eye(x, 88, 112, 30, 32, { px: 0.2, py: 0.2, pr: 14, iris: '#ff8a1a', glow: '#ffb02a' });
+    eye(x, 168, 112, 30, 32, { px: -0.2, py: 0.2, pr: 14, iris: '#ff8a1a', glow: '#ffb02a' });
+    brow(x, 50, 68, 116, 92, 14); brow(x, 206, 68, 140, 92, 14);
+    mouth(x, [[84, 170], [172, 170], [158, 206], [98, 206]], '#3a0808', 7);
+    x.shadowColor = '#ffb02a'; x.shadowBlur = 18; x.fillStyle = '#ff7a1a';
+    x.beginPath(); x.ellipse(128, 196, 26, 8, 0, 0, Math.PI * 2); x.fill();
+  }),
+};
+
+// ---------------------------------------------------------------- modelos
+function legs(P: G[], col: number, y = 0.0, spread = 0.12) {
   for (const sx of [-1, 1]) {
-    P.push(part(ico(r, 1), W, [sx * sep, y, z]));
-    P.push(part(box(r * 0.7, r * 0.9, 0.04), K, [sx * sep * 0.95, y - r * 0.1, z - r * 0.85]));
-    P.push(part(box(r * 1.6, r * 0.32, 0.05), 0x2a1a0a, [sx * sep, y + r * 1.25, z - r * 0.6], [0, 0, -sx * 0.45]));
+    P.push(tp(cap(0.06, 0.16, 8), col, [sx * spread, y + 0.14, 0], [0, 0, sx * 0.25]));
+    P.push(tp(sph(0.085, 10, 6), col, [sx * (spread + 0.04), y + 0.03, -0.05], [0, 0, 0], [1, 0.6, 1.4]));
   }
 }
 
-// --------------------------------------------------------------- 🌾 Trigo-Navalha
-function wheatBody(): G {
-  const r = rng(1); const P: G[] = [];
-  // tronco feito de feixe de talos
-  for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; P.push(part(cyl(0.035, 0.05, 1.0, 3), 0xc9a640, [Math.cos(a) * 0.14, 0.5, Math.sin(a) * 0.14], [Math.sin(a) * 0.12, 0, -Math.cos(a) * 0.12])); }
-  P.push(part(cyl(0.2, 0.17, 0.12, 8), 0x8a6a2a, [0, 0.55, 0]));
-  // cabeça de espiga com cabelo espetado
-  P.push(part(ico(0.26, 0), 0xe8c25a, [0, 1.15, 0], [0, 0, 0], [1, 1.15, 1]));
-  for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; P.push(part(cone(0.06, 0.4, 3), 0xf2d36a, [Math.cos(a) * 0.14, 1.45, Math.sin(a) * 0.14 + 0.05], [Math.sin(a) * 0.5 + 0.3, r(), -Math.cos(a) * 0.5])); }
-  eyes(P, 1.17, -0.22, 0.1, 0.07);
-  // braços e lâminas
+function wheat(): Model {
+  const B: G[] = [], H: G[] = [];
+  B.push(tp(cap(0.17, 0.42), 0x9bbf4a, [0, 0.62, 0], [0, 0, 0], [1, 1, 0.85]));
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * 6.283; B.push(tp(sph(0.14, 10, 8), 0x6fa83a, [Math.cos(a) * 0.17, 0.32, Math.sin(a) * 0.17], [Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5], [0.7, 1.3, 0.35])); }
+  legs(B, 0x5f8f2a);
   for (const sx of [-1, 1]) {
-    P.push(part(cyl(0.035, 0.035, 0.55, 3), 0xc9a640, [sx * 0.38, 0.85, -0.05], [0, 0, sx * 1.1]));
-    P.push(part(new THREE.TorusGeometry(0.32, 0.035, 3, 10, Math.PI * 0.9), 0xd8dde3, [sx * 0.62, 0.95, -0.15], [Math.PI / 2, 0, sx > 0 ? -0.4 : Math.PI + 0.4], [1, 1, 2.2]));
+    B.push(tp(cap(0.06, 0.32, 8), 0x8ab43e, [sx * 0.3, 0.78, -0.06], [0.3, 0, sx * 1.05]));
+    B.push(tp(sph(0.08, 10, 8), 0x8ab43e, [sx * 0.47, 0.9, -0.14]));
+    B.push(tp(cap(0.03, 0.22, 6), 0x7a4a22, [sx * 0.48, 0.98, -0.16]));
+    B.push(tp(tor(0.3, 0.045, 2.3, 6, 18), 0xdfe6ee, [sx * 0.52, 1.18, -0.22], [0, Math.PI / 2, sx > 0 ? 0.6 : 2.5], [1, 1, 1.6]));
   }
-  // pernas de raiz
-  for (const sx of [-1, 1]) P.push(part(cyl(0.05, 0.03, 0.4, 4), 0x6b4a22, [sx * 0.15, 0.12, 0], [0, 0, sx * 0.5]));
-  return shade(merge(P), 0.6);
+  H.push(tp(sph(0.32, 16, 12), 0xf2c94c, [0, 0.3, 0], [0, 0, 0], [1, 1.08, 0.95]));
+  for (let i = 0; i < 8; i++) {
+    const a = -1.1 + (i / 7) * 2.2;
+    H.push(tp(cap(0.07, 0.3, 8), i % 2 ? 0xffe08a : 0xf5cd5a, [Math.sin(a) * 0.2, 0.62, 0.08 + Math.abs(a) * 0.05], [-0.45, 0, -a * 0.7]));
+  }
+  for (const sx of [-1, 1]) H.push(tp(sph(0.06, 8, 6), 0xe0b23a, [sx * 0.31, 0.3, 0.02]));
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 0.95, 0], face: faceCap(0.32, [0, 0.3, 0], 2.1, 1.7, [1, 1.08, 0.95]), tex: faces.wheat(), top: 1.75 };
 }
 
-// --------------------------------------------------------------- 🌽 Milho-Artilheiro
-function cornBody(): G {
-  const P: G[] = [];
-  P.push(part(cyl(0.28, 0.3, 1.35, 10), 0xf2cf45, [0, 0.95, 0]));
-  for (let i = 0; i < 6; i++) P.push(part(cyl(0.302, 0.302, 0.05, 10), 0xd9a92a, [0, 0.4 + i * 0.22, 0]));
-  P.push(part(cone(0.3, 0.35, 10), 0xf2cf45, [0, 1.8, 0]));
-  P.push(part(cone(0.07, 0.4, 4), 0xc98a4a, [0, 2.1, 0]));
-  // capa de palha
-  for (let i = 0; i < 5; i++) { const a = Math.PI * 0.35 + (i / 4) * Math.PI * 1.3; P.push(part(cone(0.22, 1.25, 3), 0x7fb54a, [Math.cos(a) * 0.3, 0.75, Math.sin(a) * 0.3], [Math.sin(a) * -0.35, 0, Math.cos(a) * 0.35], [1, 1, 0.3])); }
-  // canhão (boca)
-  P.push(part(cyl(0.13, 0.15, 0.45, 10, true), 0x8a6a2a, [0, 1.05, -0.38], [Math.PI / 2, 0, 0]));
-  P.push(part(cyl(0.1, 0.1, 0.05, 10), 0x1a1a1a, [0, 1.05, -0.6], [Math.PI / 2, 0, 0]));
-  eyes(P, 1.45, -0.28, 0.12, 0.08);
-  for (const sx of [-1, 1]) P.push(part(cyl(0.06, 0.04, 0.45, 4), 0x5f8f35, [sx * 0.18, 0.18, 0], [0, 0, sx * 0.35]));
-  return shade(merge(P), 0.6);
+function corn(): Model {
+  const B: G[] = [], H: G[] = [];
+  for (let i = 0; i < 5; i++) { const a = Math.PI * 0.3 + (i / 4) * Math.PI * 1.4; B.push(tp(sph(0.2, 10, 8), i % 2 ? 0x6fb04a : 0x86c25a, [Math.cos(a) * 0.22, 0.45, Math.sin(a) * 0.22], [Math.sin(a) * -0.35, 0, Math.cos(a) * 0.35], [0.75, 2.2, 0.3])); }
+  legs(B, 0x5f9a3a);
+  const cob = tp(cap(0.28, 0.62, 14), 0xf5c842, [0, 0.55, 0]);
+  bands(cob, 0.05, 1.0, 0.085, 0.82);
+  H.push(cob);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * 6.283; H.push(tp(cap(0.03, 0.28, 6), 0xd8b26a, [Math.cos(a) * 0.08, 1.05, Math.sin(a) * 0.08], [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6])); }
+  H.push(tp(cyl(0.12, 0.14, 0.36, 14), 0x4f6b2a, [0, 0.36, -0.3], [Math.PI / 2, 0, 0]));
+  H.push(tp(tor(0.13, 0.04, Math.PI * 2, 6, 14), 0x3a4a1e, [0, 0.36, -0.48]));
+  H.push(tp(cyl(0.09, 0.09, 0.02, 12), 0x120c08, [0, 0.36, -0.49], [Math.PI / 2, 0, 0]));
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 0.32, 0], face: faceCap(0.285, [0, 0.72, 0], 1.9, 1.3), tex: faces.corn(), top: 1.65 };
 }
 
-// --------------------------------------------------------------- 🌻 Girassol-Laser
-function sunBody(): G {
-  const P: G[] = [];
-  P.push(part(cyl(0.07, 0.11, 1.5, 6), 0x4f8a35, [0, 0.75, 0]));
-  for (const sx of [-1, 1]) P.push(part(cone(0.22, 0.8, 3), 0x63a23e, [sx * 0.35, 0.8, 0], [0, 0, sx * 1.3], [1, 1, 0.25]));
+function sun(): Model {
+  const B: G[] = [], H: G[] = [];
+  B.push(tp(cap(0.075, 0.95, 8), 0x4f9a3a, [0, 0.62, 0]));
+  for (const [sx, y] of [[-1, 0.55], [1, 0.82]]) B.push(tp(sph(0.24, 12, 8), 0x5fb046, [sx * 0.24, y, 0], [0, 0, sx * -0.9], [1, 0.45, 0.22]));
+  legs(B, 0x3f7a2a, 0, 0.1);
   for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2;
-    P.push(part(cone(0.13, 0.42, 3), i % 2 ? 0xffc928 : 0xffb21a, [Math.cos(a) * 0.5, 1.75 + Math.sin(a) * 0.5, -0.05], [0, 0, a - Math.PI / 2], [1, 1, 0.3]));
+    const a = (i / 14) * 6.283;
+    H.push(tp(sph(0.14, 10, 8), i % 2 ? 0xffcf2e : 0xffb81c, [Math.cos(a) * 0.44, 0.22 + Math.sin(a) * 0.44, 0.02], [0, 0, a - Math.PI / 2], [0.75, 1.65, 0.35]));
   }
-  P.push(part(cyl(0.36, 0.36, 0.12, 12), 0x5a3a1a, [0, 1.75, 0], [Math.PI / 2, 0, 0]));
-  eyes(P, 1.88, -0.14, 0.14, 0.08);
-  for (const sx of [-1, 1]) P.push(part(cyl(0.06, 0.04, 0.35, 4), 0x4f8a35, [sx * 0.14, 0.12, 0], [0, 0, sx * 0.5]));
-  return shade(merge(P), 0.65);
-}
-function sunGlow(): G { return merge([part(cyl(0.16, 0.16, 0.06, 10), 0xfff27a, [0, 1.7, -0.08], [Math.PI / 2, 0, 0])]); }
-
-// --------------------------------------------------------------- 🎃 Abóbora-Bomba
-function pumpBody(): G {
-  const P: G[] = [];
-  P.push(part(ico(0.62, 1), 0xf07a1c, [0, 0.55, 0], [0, 0, 0], [1, 0.82, 1]));
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; P.push(part(ico(0.18, 0), 0xd9661a, [Math.cos(a) * 0.48, 0.55, Math.sin(a) * 0.48], [0, 0, 0], [0.6, 2.2, 0.6])); }
-  P.push(part(cyl(0.06, 0.09, 0.35, 5), 0x5a4a22, [0, 1.12, 0], [0.2, 0, 0.2]));
-  P.push(part(cone(0.18, 0.4, 3), 0x4f8f3a, [0.18, 1.1, 0.1], [0, 0, -1.2], [1, 1, 0.3]));
-  // tentáculos de cipó
-  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.4; P.push(part(cyl(0.05, 0.02, 0.8, 4), 0x4f8f3a, [Math.cos(a) * 0.62, 0.15, Math.sin(a) * 0.62], [Math.sin(a) * 1.2, 0, -Math.cos(a) * 1.2])); }
-  return shade(merge(P), 0.6);
-}
-function pumpGlow(): G {
-  const P: G[] = [];
-  for (const sx of [-1, 1]) P.push(part(cone(0.11, 0.18, 3), 0xffe35a, [sx * 0.2, 0.7, -0.5], [Math.PI / 2 - 0.3, 0, Math.PI], [1, 1, 0.3]));
-  P.push(part(box(0.5, 0.1, 0.06), 0xffb52a, [0, 0.42, -0.52], [0.25, 0, 0]));
-  for (let i = 0; i < 4; i++) P.push(part(cone(0.06, 0.12, 3), 0xffb52a, [-0.18 + i * 0.12, 0.49 - (i % 2) * 0.1, -0.53], [0.25, 0, i % 2 ? Math.PI : 0], [1, 1, 0.4]));
-  return merge(P);
+  H.push(tp(sph(0.32, 16, 12), 0x6b3f1e, [0, 0.22, 0], [0, 0, 0], [1, 1, 0.5]));
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 1.2, 0], face: faceCap(0.32, [0, 0.22, 0], 2.6, 2.3, [1, 1, 0.5]), tex: faces.sun(), top: 2.05 };
 }
 
-// --------------------------------------------------------------- 🍓 Morango-Ácido
-function berryBody(): G {
-  const r = rng(5); const P: G[] = [];
-  P.push(part(cone(0.42, 0.8, 9), 0xe2303a, [0, 0.62, 0], [Math.PI, 0, 0]));
-  P.push(part(ico(0.4, 1), 0xe2303a, [0, 0.95, 0], [0, 0, 0], [1, 0.55, 1]));
-  for (let i = 0; i < 18; i++) { const a = r() * Math.PI * 2, y = 0.45 + r() * 0.5, rr = 0.42 * (y - 0.2) / 0.8 + 0.05; P.push(part(box(0.03, 0.05, 0.03), 0xffe07a, [Math.cos(a) * rr, y, Math.sin(a) * rr])); }
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; P.push(part(cone(0.12, 0.38, 3), 0x3f8a3a, [Math.cos(a) * 0.22, 1.14, Math.sin(a) * 0.22], [Math.sin(a) * 1.3, 0, -Math.cos(a) * 1.3], [1, 1, 0.3])); }
-  // braço-catapulta nas costas
-  P.push(part(cyl(0.035, 0.035, 0.9, 4), 0x3f7a2a, [0, 1.35, 0.3], [-0.7, 0, 0]));
-  P.push(part(ico(0.14, 0), 0xff3b5c, [0, 1.7, 0.6]));
-  eyes(P, 0.92, -0.36, 0.13, 0.075);
-  for (const sx of [-1, 1]) P.push(part(cyl(0.05, 0.03, 0.4, 4), 0x3f7a2a, [sx * 0.14, 0.12, 0], [0, 0, sx * 0.5]));
-  return shade(merge(P), 0.6);
+function pumpkin(): Model {
+  const B: G[] = [], H: G[] = [];
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * 6.283 + 0.4; B.push(tp(cap(0.05, 0.42, 6), 0x4f8f3a, [Math.cos(a) * 0.38, 0.08, Math.sin(a) * 0.38], [Math.sin(a) * 1.3, 0, -Math.cos(a) * 1.3])); }
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * 6.283; B.push(tp(sph(0.16, 10, 8), 0x5fa046, [Math.cos(a) * 0.3, 0.18, Math.sin(a) * 0.3], [0, -a, 0.5], [1.2, 0.3, 0.8])); }
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.283; H.push(tp(sph(0.3, 12, 10), i % 2 ? 0xf28a1e : 0xe57a14, [Math.cos(a) * 0.24, 0.36, Math.sin(a) * 0.24], [0, -a, 0], [0.62, 0.82, 1])); }
+  H.push(tp(sph(0.42, 14, 10), 0xec8418, [0, 0.36, 0], [0, 0, 0], [1, 0.82, 1]));
+  H.push(tp(cap(0.055, 0.2, 6), 0x5a6a2a, [0.03, 0.78, 0.02], [0.3, 0, 0.3]));
+  H.push(tp(tor(0.12, 0.03, 4.5, 5, 12), 0x5fa046, [0.12, 0.78, 0.02], [0, 0, 0.5]));
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 0.18, 0], face: faceCap(0.55, [0, 0.36, 0], 1.9, 1.6, [1, 0.85, 1]), tex: faces.pumpkin(), glow: tmerge([tp(sph(0.06, 8, 6), 0xffe35a, [0.03, 0.92, 0.02])]), top: 1.2 };
 }
 
-// --------------------------------------------------------------- 💜 Lavanda-Sonífera
-function lavBody(): G {
-  const P: G[] = [];
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    P.push(part(cone(0.08, 0.7, 4), i % 2 ? 0x9b6fd6 : 0xb58cf0, [Math.cos(a) * 0.32, 1.25, Math.sin(a) * 0.32], [Math.sin(a) * -0.5, 0, Math.cos(a) * 0.5]));
+function berry(): Model {
+  const r = rng(4);
+  const B: G[] = [], H: G[] = [];
+  legs(B, 0x3f8a3a, 0, 0.13);
+  B.push(tp(cap(0.04, 0.75, 6), 0x3f7a2a, [0.05, 0.85, 0.32], [-0.75, 0, 0]));
+  B.push(tp(sph(0.13, 10, 8), 0x9dff3a, [0.05, 1.28, 0.6]));
+  H.push(tp(sph(0.4, 16, 12), 0xe8323c, [0, 0.4, 0], [0, 0, 0], [1, 1, 0.95]));
+  H.push(tp(cone(0.33, 0.38, 14), 0xe8323c, [0, 0.06, 0], [Math.PI, 0, 0]));
+  for (let i = 0; i < 16; i++) {
+    const a = Math.PI * 0.75 + r() * Math.PI * 1.5 - Math.PI, y = 0.1 + r() * 0.55, rr = 0.32 + (y > 0.4 ? 0.08 : 0);
+    if (Math.sin(a) < -0.6 && y > 0.2) continue;
+    H.push(tp(sph(0.028, 6, 4), 0xffe07a, [Math.cos(a) * rr, y, Math.sin(a) * rr]));
   }
-  P.push(part(ico(0.34, 1), 0x6a4a9a, [0, 1.0, 0], [0, 0, 0], [1, 1.1, 1]));
-  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; P.push(part(cone(0.14, 0.5, 3), 0x6e8f5a, [Math.cos(a) * 0.28, 0.5, Math.sin(a) * 0.28], [Math.PI + Math.sin(a) * 0.4, 0, Math.cos(a) * 0.4], [1, 1, 0.3])); }
-  eyes(P, 1.05, -0.3, 0.12, 0.07);
-  return shade(merge(P), 0.65);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * 6.283; H.push(tp(sph(0.15, 10, 6), 0x3f9a3a, [Math.cos(a) * 0.2, 0.78, Math.sin(a) * 0.2], [Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9], [0.6, 0.2, 1.3])); }
+  H.push(tp(cap(0.035, 0.12, 6), 0x3f7a2a, [0, 0.88, 0]));
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 0.22, 0], face: faceCap(0.4, [0, 0.4, 0], 2.0, 1.6, [1, 1, 0.95]), tex: faces.berry(), glow: tmerge([tp(sph(0.1, 8, 6), 0xc8ff6a, [0.05, 1.06, 0.38])]), top: 1.4 };
 }
-function lavGlow(): G { return merge([part(ico(0.13, 1), 0xe8d0ff, [0, 0.62, 0])]); }
 
-// --------------------------------------------------------------- 🌵 Cacto-Muralha
-function cactusBody(): G {
-  const P: G[] = [];
-  P.push(part(cyl(0.42, 0.48, 1.7, 9), 0x4f9a4a, [0, 0.85, 0]));
-  P.push(part(ico(0.43, 1), 0x4f9a4a, [0, 1.7, 0], [0, 0, 0], [1, 0.7, 1]));
-  for (let i = 0; i < 9; i++) P.push(part(box(0.05, 1.7, 0.06), 0x3a7a38, [Math.cos((i / 9) * 6.28) * 0.44, 0.9, Math.sin((i / 9) * 6.28) * 0.44], [0, -(i / 9) * 6.28, 0]));
+function lav(): Model {
+  const B: G[] = [], H: G[] = [];
+  B.push(tp(cone(0.22, 0.55, 12), 0xc7b0f5, [0, 0.42, 0], [Math.PI, 0, 0]));
+  for (const sx of [-1, 1]) B.push(tp(sph(0.09, 10, 8), 0x6e9a5a, [sx * 0.26, 0.55, -0.08], [0, 0, sx * 0.6], [1.4, 0.5, 0.8]));
+  H.push(tp(sph(0.33, 16, 12), 0xc4a8f7, [0, 0.28, 0], [0, 0, 0], [1, 1.05, 1]));
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * 6.283;
+    if (Math.sin(a) < -0.55) continue;
+    H.push(tp(cap(0.06, 0.34, 8), i % 2 ? 0x8a5fd0 : 0x9d74e0, [Math.cos(a) * 0.24, 0.6, Math.sin(a) * 0.24], [Math.sin(a) * -0.55, 0, Math.cos(a) * 0.55]));
+  }
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 0.68, 0], face: faceCap(0.33, [0, 0.28, 0], 2.0, 1.6, [1, 1.05, 1]), tex: faces.lav(), glow: tmerge([tp(sph(0.1, 10, 8), 0xf0e0ff, [0, 0.3, -0.18])]), top: 1.55 };
+}
+
+function cactus(): Model {
+  const r = rng(6);
+  const B: G[] = [], H: G[] = [];
+  B.push(tp(cap(0.4, 0.7, 14), 0x5aad4e, [0, 0.72, 0]));
   for (const sx of [-1, 1]) {
-    P.push(part(cyl(0.17, 0.17, 0.5, 7), 0x5aa652, [sx * 0.62, 1.0, 0], [0, 0, sx * 1.57]));
-    P.push(part(cyl(0.17, 0.17, 0.7, 7), 0x5aa652, [sx * 0.84, 1.35, 0]));
-    P.push(part(ico(0.17, 0), 0x5aa652, [sx * 0.84, 1.7, 0]));
+    B.push(tp(cap(0.13, 0.22, 10), 0x63b856, [sx * 0.52, 0.72, 0], [0, 0, sx * 1.57]));
+    B.push(tp(cap(0.13, 0.32, 10), 0x63b856, [sx * 0.68, 0.98, 0]));
   }
-  for (let i = 0; i < 36; i++) { const a = Math.random() * 6.28, y = 0.2 + Math.random() * 1.6; P.push(part(cone(0.025, 0.18, 3), 0xf2ead2, [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], [0, -a, Math.PI / 2])); }
-  P.push(part(ico(0.13, 0), 0xff6aa8, [0.1, 2.0, 0]));
-  P.push(part(ico(0.09, 0), 0xffe35a, [0.1, 2.05, -0.05]));
-  eyes(P, 1.45, -0.45, 0.15, 0.09);
-  P.push(part(box(0.3, 0.06, 0.05), 0x1a3a1a, [0, 1.18, -0.47]));
-  return shade(merge(P), 0.6);
+  for (let i = 0; i < 18; i++) { const a = r() * 6.283, y = 0.35 + r() * 0.75; B.push(tp(cone(0.025, 0.14, 4), 0xfff2d2, [Math.cos(a) * 0.42, y, Math.sin(a) * 0.42], [0, -a, -Math.PI / 2])); }
+  legs(B, 0x3f8a3a, 0, 0.18);
+  H.push(tp(sph(0.38, 16, 12), 0x5aad4e, [0, 0.22, 0], [0, 0, 0], [1, 0.95, 1]));
+  H.push(tp(sph(0.11, 10, 8), 0xff6aa8, [0.12, 0.6, 0.05], [0, 0, 0], [1, 0.6, 1]));
+  H.push(tp(sph(0.06, 8, 6), 0xffe35a, [0.12, 0.66, 0.05]));
+  for (let i = 0; i < 6; i++) { const a = r() * 6.283; if (Math.sin(a) < -0.4) continue; H.push(tp(cone(0.022, 0.12, 4), 0xfff2d2, [Math.cos(a) * 0.38, 0.3 + r() * 0.2, Math.sin(a) * 0.38], [0, -a, -Math.PI / 2])); }
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 1.2, 0], face: faceCap(0.38, [0, 0.22, 0], 2.0, 1.6, [1, 0.95, 1]), tex: faces.cactus(), top: 2.0 };
 }
 
-// --------------------------------------------------------------- 🌶️ Pimenta-Dragão
-function pepperBody(): G {
-  const P: G[] = [];
-  P.push(part(ico(0.36, 1), 0xc8140e, [0, 1.0, 0.05], [0.2, 0, 0], [1, 1.45, 0.95]));
-  P.push(part(cone(0.24, 0.55, 8), 0xb3120c, [0, 0.42, 0.28], [Math.PI + 0.75, 0, 0]));
-  P.push(part(cone(0.1, 0.3, 6), 0xa0100a, [0, 0.2, 0.55], [Math.PI + 1.4, 0, 0]));
-  P.push(part(ico(0.32, 1), 0xe0261a, [0, 1.5, -0.12]));
-  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; P.push(part(cone(0.12, 0.32, 3), 0x3f8a2a, [Math.cos(a) * 0.2, 1.8, Math.sin(a) * 0.2 - 0.1], [Math.sin(a) * 1.0, 0, -Math.cos(a) * 1.0], [1, 1, 0.3])); }
-  P.push(part(cyl(0.05, 0.07, 0.35, 5), 0x3f8a2a, [0, 1.95, -0.1], [0.4, 0, 0]));
-  // boca de dragão
-  P.push(part(cyl(0.12, 0.15, 0.2, 8), 0x5a0a0a, [0, 1.38, -0.42], [Math.PI / 2, 0, 0]));
-  eyes(P, 1.62, -0.38, 0.13, 0.075);
-  for (const sx of [-1, 1]) {
-    P.push(part(cone(0.18, 0.5, 3), 0x3f8a2a, [sx * 0.35, 1.0, 0.1], [0, 0, sx * 1.4], [1, 1, 0.25]));
-    P.push(part(cyl(0.05, 0.03, 0.45, 4), 0x3f7a2a, [sx * 0.12, 0.15, 0], [0, 0, sx * 0.4]));
-  }
-  return shade(merge(P), 0.6);
+function pepper(): Model {
+  const B: G[] = [], H: G[] = [];
+  B.push(tp(cap(0.26, 0.4, 12), 0xd42a20, [0, 0.62, 0.05], [0.25, 0, 0]));
+  B.push(tp(cone(0.2, 0.45, 12), 0xc4241a, [0, 0.22, 0.24], [Math.PI + 0.7, 0, 0]));
+  for (const sx of [-1, 1]) B.push(tp(sph(0.2, 10, 8), 0x4fa03a, [sx * 0.24, 0.8, 0.22], [0.4, sx * 0.5, sx * 0.8], [1.4, 0.18, 0.8]));
+  legs(B, 0x3f7a2a, 0, 0.12);
+  H.push(tp(sph(0.3, 16, 12), 0xd42a20, [0, 0.2, 0]));
+  H.push(tp(sph(0.2, 12, 8), 0xd42a20, [0, 0.12, -0.24], [0, 0, 0], [1.1, 0.85, 1]));
+  for (const sx of [-1, 1]) H.push(tp(cone(0.06, 0.2, 8), 0xf2e6c8, [sx * 0.16, 0.48, 0.02], [0.3, 0, sx * -0.35]));
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * 6.283; H.push(tp(sph(0.11, 8, 6), 0x3f8a2a, [Math.cos(a) * 0.12, 0.47, Math.sin(a) * 0.12 + 0.04], [0, -a, 0], [1.4, 0.35, 0.7])); }
+  H.push(tp(cap(0.04, 0.18, 6), 0x3f7a2a, [0, 0.6, 0.06], [0.4, 0, 0]));
+  return { body: tmerge(B), head: tmerge(H), pivot: [0, 0.98, -0.05], face: faceCap(0.3, [0, 0.22, 0], 2.0, 1.55), tex: faces.pepper(), glow: tmerge([tp(sph(0.07, 8, 6), 0xffb02a, [0, 0.08, -0.43])]), top: 1.75 };
 }
-function pepperGlow(): G { return merge([part(cyl(0.08, 0.1, 0.05, 8), 0xffa02a, [0, 1.38, -0.53], [Math.PI / 2, 0, 0])]); }
 
-const STAR = merge([part(new THREE.OctahedronGeometry(0.13, 0), 0xffd23f, [0, 0, 0], [0, 0, 0], [1, 1, 0.35])]);
-const HEAD = [1.75, 2.35, 2.35, 1.35, 1.55, 1.55, 2.3, 2.15];
+const STAR = (() => { const g = new THREE.OctahedronGeometry(0.13, 0); g.scale(1, 1, 0.4); return g; })();
+
+interface Set { body: THREE.InstancedMesh; bodyO: THREE.InstancedMesh; head: THREE.InstancedMesh; headO: THREE.InstancedMesh; face: THREE.InstancedMesh; glow: THREE.InstancedMesh | null; model: Model }
 
 /** Plantas-criaturas: as culturas maduras se transformam à noite. */
 export class Creatures {
-  private body: THREE.InstancedMesh[] = [];
-  private glow: (THREE.InstancedMesh | null)[] = [];
-  /** direção para onde cada planta olha */
+  private sets: Set[] = [];
   yaw = new Float32Array(N);
+  private hyaw = new Float32Array(N);
   private delay = new Float32Array(N);
   private m4 = new THREE.Matrix4();
+  private h4 = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
   private p = new THREE.Vector3();
   private sc = new THREE.Vector3();
   private nightT = 0;
-  /** alvo de cada canteiro (definido pela defesa) */
   aim: (t: number) => { x: number; z: number } | null = () => null;
   charge = new Float32Array(N);
   private stars: THREE.InstancedMesh;
 
   constructor(scene: THREE.Scene, private fx: FX, high: boolean) {
-    const bodies = [wheatBody(), cornBody(), sunBody(), pumpBody(), berryBody(), lavBody(), cactusBody(), pepperBody()];
-    const glows = [null, null, sunGlow(), pumpGlow(), null, lavGlow(), null, pepperGlow()];
-    const bm = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x2a3a24, emissiveIntensity: 0.35 });
-    const gm = new THREE.MeshBasicMaterial({ vertexColors: true });
-    bodies.forEach((g, i) => {
-      const m = new THREE.InstancedMesh(g, bm, N); m.count = 0; m.frustumCulled = false; m.castShadow = high; m.receiveShadow = true;
-      scene.add(m); this.body.push(m);
-      const gg = glows[i];
-      if (gg) { const mg = new THREE.InstancedMesh(gg, gm, N); mg.count = 0; mg.frustumCulled = false; scene.add(mg); this.glow.push(mg); }
-      else this.glow.push(null);
-    });
-    this.stars = new THREE.InstancedMesh(STAR, new THREE.MeshBasicMaterial({ vertexColors: true }), N * 3);
+    const models = [wheat(), corn(), sun(), pumpkin(), berry(), lav(), cactus(), pepper()];
+    const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const mk = (g: G, m: THREE.Material, shadow = false) => {
+      const im = new THREE.InstancedMesh(g, m, N);
+      im.count = 0; im.frustumCulled = false; im.castShadow = shadow && high; im.receiveShadow = false;
+      scene.add(im);
+      return im;
+    };
+    for (const md of models) {
+      const faceMat = new THREE.MeshBasicMaterial({ map: md.tex, transparent: true, alphaTest: 0.3, depthWrite: false, color: 0xeeeeee });
+      this.sets.push({
+        body: mk(md.body, TOON, true), bodyO: mk(hull(md.body, 0.03), OUTLINE),
+        head: mk(md.head, TOON, true), headO: mk(hull(md.head, 0.03), OUTLINE),
+        face: mk(md.face, faceMat), glow: md.glow ? mk(md.glow, glowMat) : null, model: md,
+      });
+    }
+    this.stars = new THREE.InstancedMesh(STAR, new THREE.MeshBasicMaterial({ color: 0xffd23f }), N * 3);
     this.stars.count = 0; this.stars.frustumCulled = false;
     scene.add(this.stars);
     const r = rng(9);
-    for (let t = 0; t < N; t++) { this.delay[t] = r() * 2.5; this.yaw[t] = 0; }
+    for (let t = 0; t < N; t++) this.delay[t] = r() * 2.5;
   }
 
   update(dt: number, night: boolean, time: number, cam: THREE.Vector3) {
     this.nightT = night ? this.nightT + dt : 0;
-    const counts = [0, 0, 0, 0, 0, 0, 0, 0];
+    const counts = new Array(this.sets.length).fill(0);
     let ns = 0;
     let changed = false;
     for (let t = 0; t < N; t++) {
@@ -208,58 +266,69 @@ export class Creatures {
       if (a0 !== want) {
         T.a[t] = want > a0 ? Math.min(1, a0 + dt * 1.6) : Math.max(0, a0 - dt * 1.2);
         changed = true;
-        const x = tileX(t), z = tileZ(t);
-        if (a0 === 0 && want === 1) this.fx.spawn(x, 0.5, z, 0x9dff7a, 14, 1.2, 4, 7, 0.8);
-        if (a0 === 1 && want === 0) this.fx.spawn(x, 0.6, z, 0xfff2a0, 8, 1, 2, 5, 0.8);
+        if (a0 === 0 && want === 1) this.fx.spawn(tileX(t), 0.5, tileZ(t), 0x9dff7a, 14, 1.2, 4, 7, 0.8);
+        if (a0 === 1 && want === 0) this.fx.spawn(tileX(t), 0.6, tileZ(t), 0xfff2a0, 8, 1, 2, 5, 0.8);
       }
       const a = T.a[t];
       if (a <= 0.001) continue;
       const c = T.c[t];
       const x = tileX(t), z = tileZ(t);
-      if ((x - cam.x) ** 2 + (z - cam.z) ** 2 > 110 * 110) continue;
-      // mira suave
+      if ((x - cam.x) ** 2 + (z - cam.z) ** 2 > 90 * 90) continue;
+      const set = this.sets[c];
+      const md = set.model;
+      // mira: corpo vira devagar, cabeça rápido
       const tg = this.aim(t);
-      let ty = this.yaw[t];
-      if (tg) ty = Math.atan2(-(tg.x - x), -(tg.z - z));
-      else ty = Math.sin(time * 0.5 + t) * 0.6;
-      let d = ty - this.yaw[t]; d = Math.atan2(Math.sin(d), Math.cos(d));
+      const ty = tg ? Math.atan2(-(tg.x - x), -(tg.z - z)) : Math.sin(time * 0.4 + t) * 0.5;
       const pu = Math.max(0, T.p[t]);
-      if (c === 0 && pu > 0) this.yaw[t] += dt * 22; // lâminas giram
-      else this.yaw[t] += d * Math.min(1, dt * 6);
-      // escala com "pulo" ao nascer
+      let d = ty - this.yaw[t]; d = Math.atan2(Math.sin(d), Math.cos(d));
+      if (c === 0 && pu > 0) this.yaw[t] += dt * 20;
+      else this.yaw[t] += d * Math.min(1, dt * 3);
+      let hd = ty - this.yaw[t]; hd = Math.atan2(Math.sin(hd), Math.cos(hd));
+      hd = Math.max(-0.9, Math.min(0.9, hd));
+      this.hyaw[t] += (hd - this.hyaw[t]) * Math.min(1, dt * 10);
+      // escala/pulo
       const k = a < 1 ? 1 + 2.7 * Math.pow(a - 1, 3) + 1.7 * Math.pow(a - 1, 2) : 1;
-      const breathe = 1 + Math.sin(time * 3.2 + t * 1.7) * 0.04;
       const lvl = T.k[t] >= 40 ? 3 : T.k[t] >= 15 ? 2 : T.k[t] >= 5 ? 1 : 0;
-      const big = 1 + lvl * 0.1;
-      let sx = k * big, sy = k * breathe * big, lean = 0, lift = 0;
-      if (c === 1) lean = pu * 0.45;                       // coice do milho
-      if (c === 2) lean = -0.12 - pu * 0.2;                // girassol inclina para o alvo
-      if (c === 3) { const ch = this.charge[t]; const w = 1 + ch * 0.25 + Math.sin(time * (8 + ch * 30)) * ch * 0.08; sx *= w; sy *= w; }
-      if (c === 4) lean = -pu * 0.6;                       // catapulta
-      if (c === 5) { lift = 0.25 + Math.sin(time * 2 + t) * 0.15; this.yaw[t] += dt * 0.6; }
-      if (c === 7) lean = -pu * 0.25;
-      if (pu > 0 && c !== 0) { sx *= 1 + pu * 0.12; sy *= 1 - pu * 0.06; }
-      if (T.p[t] < 0) { sx *= 1 + T.p[t] * 0.2; sy *= 1 + T.p[t] * 0.3; } // sendo mordida
-      this.e.set(lean, this.yaw[t], 0, 'YXZ');
-      this.q.setFromEuler(this.e);
-      this.m4.compose(this.p.set(x, 0.08 + lift * k + Math.abs(Math.sin(time * 4 + t)) * 0.03, z), this.q, this.sc.set(sx, sy, sx));
-      this.body[c].setMatrixAt(counts[c], this.m4);
-      this.glow[c]?.setMatrixAt(counts[c], this.m4);
-      counts[c]++;
+      const big = (1 + lvl * 0.1) * 1.15;
+      const ph = time * 3.2 + t * 1.7;
+      const bounce = Math.abs(Math.sin(ph)) * 0.05;
+      let sx = k * big, sy = k * big * (1 + Math.sin(ph * 2) * 0.03), lean = Math.sin(ph * 0.5) * 0.05, lift = 0;
+      let hp = Math.sin(ph) * 0.08, hr = Math.sin(ph * 0.7) * 0.08, hs = 1;
+      if (c === 1) { hp -= pu * 0.5; lean += pu * 0.15; }
+      if (c === 2) hp -= 0.15 + pu * 0.25;
+      if (c === 3) { const ch = this.charge[t]; hs = 1 + ch * 0.3 + Math.sin(time * (10 + ch * 35)) * ch * 0.08; }
+      if (c === 4) { hp += pu * 0.4; lean -= pu * 0.3; }
+      if (c === 5) { lift = 0.3 + Math.sin(time * 2 + t) * 0.15; hr += Math.sin(time * 1.3 + t) * 0.15; }
+      if (c === 7) { hp -= pu * 0.3; hs = 1 + pu * 0.08; }
+      if (c === 6 && T.p[t] < 0) hs = 1.05;
+      if (pu > 0 && c !== 0) { sx *= 1 + pu * 0.1; sy *= 1 - pu * 0.08; }
+      if (T.p[t] < 0) { sx *= 1 - T.p[t] * 0.12; sy *= 1 + T.p[t] * 0.25; }
+      this.q.setFromEuler(this.e.set(lean, this.yaw[t], 0, 'YXZ'));
+      this.m4.compose(this.p.set(x, 0.1 + (lift + bounce) * k, z), this.q, this.sc.set(sx, sy, sx));
+      // cabeça
+      this.q.setFromEuler(this.e.set(hp, this.hyaw[t], hr, 'YXZ'));
+      this.h4.compose(this.p.set(md.pivot[0], md.pivot[1], md.pivot[2]), this.q, this.sc.set(hs, hs, hs));
+      this.h4.premultiply(this.m4);
+      const i = counts[c]++;
+      set.body.setMatrixAt(i, this.m4); set.bodyO.setMatrixAt(i, this.m4);
+      set.head.setMatrixAt(i, this.h4); set.headO.setMatrixAt(i, this.h4); set.face.setMatrixAt(i, this.h4);
+      set.glow?.setMatrixAt(i, this.h4);
       if (lvl > 0 && a > 0.9) {
         for (let si = 0; si < lvl; si++) {
           const ang = time * 2 + si * (6.283 / lvl);
           this.q.setFromEuler(this.e.set(0, time * 3, 0));
-          this.m4.compose(this.p.set(x + Math.cos(ang) * 0.3, (HEAD[c] + lift) * big + 0.15, z + Math.sin(ang) * 0.3), this.q, this.sc.set(1, 1, 1));
-          this.stars.setMatrixAt(ns++, this.m4);
+          this.h4.compose(this.p.set(x + Math.cos(ang) * 0.35, (md.top + lift) * big + 0.2, z + Math.sin(ang) * 0.35), this.q, this.sc.set(1, 1, 1));
+          this.stars.setMatrixAt(ns++, this.h4);
         }
       }
     }
-    this.stars.count = ns; this.stars.instanceMatrix.needsUpdate = true;
-    this.body.forEach((m, i) => {
-      m.count = counts[i]; m.instanceMatrix.needsUpdate = true;
-      const g = this.glow[i]; if (g) { g.count = counts[i]; g.instanceMatrix.needsUpdate = true; }
+    this.sets.forEach((st, i) => {
+      for (const m of [st.body, st.bodyO, st.head, st.headO, st.face, st.glow]) {
+        if (!m) continue;
+        m.count = counts[i]; m.instanceMatrix.needsUpdate = true;
+      }
     });
+    this.stars.count = ns; this.stars.instanceMatrix.needsUpdate = true;
     if (changed) markDirty();
   }
 }

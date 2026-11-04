@@ -20,6 +20,7 @@ import { Horde, ZDEF, eyeMat as zEyeMat, type Zombie, type ZKind } from './zombi
 import { Defense } from './defense';
 import { LaneView, LMAP, lanesFor } from './lanes';
 import { Creatures } from './creatures';
+import { faceMats } from './zmodels';
 import { Minimap } from './minimap';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
@@ -632,6 +633,7 @@ function updatePhase(dt: number) {
 
 function eyeTint() {
   zEyeMat.color.set(nightMod === 'blood' ? 0xff1a1a : 0xffb02a);
+  for (const m of faceMats) m.color.set(nightMod === 'blood' ? 0xffa0a0 : 0xffffff);
   world.fogMult = nightMod === 'fog' ? 0.4 : 1;
 }
 
