@@ -15,7 +15,7 @@ import { resolve } from './physics';
 import { uTime } from './gfx';
 import * as ui from './ui';
 import { Life } from './life';
-import { learn, SKMAP } from './skills';
+import { learn, NMAP } from './skills';
 import { Horde, ZDEF, eyeMat as zEyeMat, type Zombie, type ZKind } from './zombies';
 import { Defense } from './defense';
 import { LaneView, LMAP, lanesFor } from './lanes';
@@ -25,7 +25,8 @@ import { Minimap } from './minimap';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
-import { baseMax, playerMax, addXp, dayLen, diffK } from './state';
+import { baseMax, playerMax, addXp, dayLen, diffK, pct } from './state';
+import { recalcStats } from './skills';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -107,6 +108,7 @@ function applyState() {
   if (s.phase === 'night') { s.phase = 'day'; s.phaseT = 20; }
   horde.clear(); defense.reset();
   walls.load(s.walls);
+  recalcStats();
   planNext();
   player.setTool(s.tool);
   if (s.inTractor && !lv('tractor')) s.inTractor = false;
@@ -244,7 +246,7 @@ ui.initUI({
   learn(id) {
     if (!learn(id)) { sfx.error(); return; }
     sfx.buy();
-    ui.toast(`${SKMAP[id].icon} ${SKMAP[id].name} aprendida!`, 'good');
+    ui.toast(`${NMAP[id].icon} ${NMAP[id].name} desbloqueado!`, 'good');
     tractor.setMode(s.implement, implWidth());
     fx.spawn(player.pos.x, 2, player.pos.z, 0xffd23f, 25, 1.5, 5, 6, 1.2);
     hudDirty = true;
@@ -253,7 +255,7 @@ ui.initUI({
   aerial: toggleAerial,
   zoom: (d: number) => { aer.th = Math.max(22, Math.min(140, aer.th * (d > 0 ? 1.25 : 0.8))); },
   tool: selectTool,
-  wall(i) { buildType = i; sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${fmt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
+  wall(i) { buildType = i; if (aerial) ui.toast(`Toque no mapa para construir · ${WALLS[i].icon} ${WALLS[i].name} ${fmt(WALLS[i].cost)}`); sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${fmt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
   startNight: () => startNight(),
   restart: () => restart(),
@@ -301,15 +303,44 @@ function toggleAerial() {
   aerial = !aerial;
   document.body.classList.toggle('aerial', aerial);
   if (aerial) {
-    aer.tx = aer.x = player.pos.x; aer.tz = aer.z = player.pos.z - 12;
-    aer.th = 70; aer.h = 30;
+    aer.tx = aer.x = player.pos.x * 0.5 - 4; aer.tz = aer.z = (player.pos.z - 12) * 0.5 - 8;
+    aer.th = 62; aer.h = 30;
     input.action = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    ui.invalidateBars(); ui.renderCropbar(false, buildType);
     ui.toast(isTouch ? '🦅 Visão aérea · arraste para mover · ➕➖ zoom' : '🦅 Visão aérea · mouse/WASD movem · roda dá zoom · Q volta', 'good');
   } else {
     player.pitch = -0.25;
     camSnap = true;
+    aerialMarks.count = 0;
+    ui.invalidateBars(); ui.renderToolbar(s.inTractor);
+    if (!isTouch) canvas.requestPointerLock?.();
   }
   sfx.click();
+}
+
+/** Constrói a barricada selecionada no ponto tocado (visão aérea). */
+function aerialTap(sx: number, sy: number) {
+  const ndc = new THREE.Vector2((sx / window.innerWidth) * 2 - 1, -(sy / window.innerHeight) * 2 + 1);
+  const rc = new THREE.Raycaster(); rc.setFromCamera(ndc, camera);
+  const d = rc.ray.direction; if (d.y >= -0.01) return;
+  const t = -camera.position.y / d.y;
+  const x = Math.round(camera.position.x + d.x * t), z = Math.round(camera.position.z + d.z * t);
+  const other = walls.at(x, z, 1.6);
+  if (other) { buildPt.set(other.x, 0, other.z); const W0 = WALLS[other.type]; const cost = Math.ceil(W0.cost * 0.5 * (1 - other.hp / W0.hp)); if (other.hp >= W0.hp) { ui.toast('🧱 Já está inteira'); return; } if (!spend(cost)) { ui.toast(`💸 Reparo custa ${fmt(cost)}`, 'warn'); return; } other.hp = W0.hp; sfx.plow(); ui.toast(`🔨 Reparado por ${fmt(cost)}`); return; }
+  let blocked = false;
+  for (const b of colliders.boxes) { if (b.on && !b.on()) continue; if (x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1) blocked = true; }
+  for (const c of colliders.circles) { if (c.on && !c.on()) continue; if ((x - c.x) ** 2 + (z - c.z) ** 2 < (c.r + 1) ** 2) blocked = true; }
+  if (blocked || Math.abs(x) > 92 || z < -95 || z > 60) { ui.toast('🚫 Não dá para construir aqui', 'warn'); sfx.error(); return; }
+  const W = WALLS[buildType];
+  if (s.level < W.level) { ui.toast(`🔒 ${W.name} requer nível ${W.level}`, 'warn'); return; }
+  if (!spend(W.cost)) { ui.toast(`💸 ${W.name} custa ${fmt(W.cost)}`, 'warn'); sfx.error(); return; }
+  // vira de frente para a rota mais próxima
+  let best = Infinity, rot = 0;
+  for (const id in LMAP) { const P = LMAP[id].pts; for (let i = 0; i < P.length - 1; i++) { const [ax, az] = P[i], [bx, bz] = P[i + 1]; const vx = bx - ax, vz = bz - az; const L = vx * vx + vz * vz; const u = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / L)); const dd = (ax + vx * u - x) ** 2 + (az + vz * u - z) ** 2; if (dd < best) { best = dd; rot = -Math.atan2(vx, -vz); } } }
+  walls.add(buildType, x, z, best < 100 ? rot : 0);
+  sfx.plow();
+  fx.spawn(x, 0.5, z, 0x9a6a3c, 14, 1.5, 3, 9, 0.7);
 }
 function aerialInput(dt: number, mx: number, my: number) {
   const k = aer.h / 480;
@@ -318,13 +349,21 @@ function aerialInput(dt: number, mx: number, my: number) {
   aer.tz -= input.lookY * px * k;
   aer.tx += mx * dt * aer.h * 0.8;
   aer.tz -= my * dt * aer.h * 0.8;
+  if (input.pinch) { aer.th = Math.max(22, Math.min(140, aer.th * Math.exp(-input.pinch * 1.2))); input.pinch = 0; }
+  if (consume('Tap')) aerialTap(input.tapX, input.tapY);
   aer.tx = Math.max(-95, Math.min(95, aer.tx));
   aer.tz = Math.max(-100, Math.min(60, aer.tz));
 }
+const aerialMarks = new THREE.InstancedMesh(new THREE.RingGeometry(0.55, 1, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff3a2a, transparent: true, opacity: 0.85, depthTest: false }), 200);
+aerialMarks.count = 0; aerialMarks.frustumCulled = false; aerialMarks.renderOrder = 30;
+scene.add(aerialMarks);
 function aerialCamera(dt: number) {
+  const mm = new THREE.Matrix4(); let n = 0; const k = aer.h / 45;
+  for (const z of horde.list) { if (z.dead || n >= 200) continue; const sc = k * (z.kind === 'colossus' ? 2.2 : z.kind === 'brute' ? 1.4 : 1) * (1 + Math.sin(realTime * 6) * 0.08); mm.makeScale(sc, 1, sc).setPosition(z.g.position.x, z.kind === 'crow' ? 3.4 : 0.15, z.g.position.z); aerialMarks.setMatrixAt(n++, mm); }
+  aerialMarks.count = n; aerialMarks.instanceMatrix.needsUpdate = true;
   const f = 1 - Math.exp(-dt * 6);
   aer.x += (aer.tx - aer.x) * f; aer.z += (aer.tz - aer.z) * f; aer.h += (aer.th - aer.h) * f;
-  camera.position.set(aer.x, aer.h, aer.z + aer.h * 0.55);
+  camera.position.set(aer.x, aer.h, aer.z + aer.h * 0.38);
   camera.lookAt(aer.x, 0, aer.z);
 }
 
@@ -435,7 +474,7 @@ function useHand() {
   if (done.size) {
     player.use();
     for (const a of done) actionSfx[a]();
-    cooldown = (s.tool === 3 ? 0.16 : s.tool === 2 ? 0.2 : 0.26) / (1 + 0.15 * sk('m1'));
+    cooldown = (s.tool === 3 ? 0.16 : s.tool === 2 ? 0.2 : 0.26) / pct('tool');
     bus.emit('hud');
   } else cooldown = 0.12;
 }
@@ -674,6 +713,7 @@ function updatePhase(dt: number) {
       ui.toast('❤️ Você se recuperou na casa');
     }
   } else if (hurtT > 4 && playerHp < playerMax()) playerHp = Math.min(playerMax(), playerHp + dt * 8 * (1 + 0.5 * lv('medkit')));
+  if (s.phase === 'night' && sk('d4') && !over) s.baseHp = Math.min(baseMax(), s.baseHp + 3 * dt);
   if (s.phase === 'night' && s.baseHp < baseMax() * 0.5 && Math.random() < dt * 4) fx.spawn(POS.house.x + (Math.random() - 0.5) * 8, 4 + Math.random() * 2, POS.house.z + (Math.random() - 0.5) * 6, Math.random() < 0.5 ? 0xff7a2a : 0x555555, 2, 1, 2, -1, 1.5);
 }
 
@@ -710,7 +750,7 @@ function hurtBase(d: number) {
 
 function onKill(z: Zombie, by: 'plant' | 'player') {
   s.stats.kills++;
-  earn(z.reward);
+  earn(Math.round(z.reward * pct('kill')));
   addXp(z.kind === 'colossus' ? 80 : z.kind === 'brute' ? 6 : 2);
   const p = z.g.position;
   if (camera.position.distanceToSquared(p) < 1600 || z.kind === 'colossus') ui.float3d(`+${fmt(z.reward)}`, tp.set(p.x, 2.3, p.z), camera, by === 'player' ? 'money' : 'coin');
@@ -763,18 +803,18 @@ function attack() {
     if (v.length() > 0.01 && v.normalize().dot(fwd) < 0.35) return;
     if (z.kind === 'crow' && player.pitch < 0.2) return;
     hitAny = true;
-    if (horde.hit(z, 18 * (1 + 0.3 * lv('blade')), { knock: fwd.clone().multiplyScalar(3.5) })) onKill(z, 'player');
+    if (horde.hit(z, 18 * (1 + 0.3 * lv('blade')) * pct('udmg'), { knock: fwd.clone().multiplyScalar(3.5) })) onKill(z, 'player');
   });
   if (hitAny) { sfx.whack(); shake = Math.max(shake, 0.08); }
   if (lv('seedgun')) {
     const from = camera.position.clone().addScaledVector(aimDir, 0.8);
     from.y -= 0.2;
-    defense.fireSeed(from, aimTarget(0.3, 30), aimDir.clone(), 9 * (1 + 0.25 * lv('ammo')));
+    defense.fireSeed(from, aimTarget(0.3, 30), aimDir.clone(), 9 * (1 + 0.25 * lv('ammo')) * pct('udmg'));
     sfx.shoot(3);
-    cooldown = 0.38 / (1 + 0.15 * sk('m1'));
+    cooldown = 0.38 / pct('tool');
   } else {
     if (!hitAny) sfx.swing();
-    cooldown = 0.6 / (1 + 0.15 * sk('m1'));
+    cooldown = 0.6 / pct('tool');
   }
 }
 
@@ -1118,4 +1158,4 @@ window.addEventListener('pagehide', doSave);
 window.addEventListener('beforeunload', doSave);
 
 // debug para testes
-(window as any).__tv = { game, farm, player, tractor, horde, walls, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };
+(window as any).__tv = { game, farm, player, tractor, horde, walls, defense, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };

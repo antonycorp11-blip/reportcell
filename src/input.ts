@@ -6,7 +6,10 @@ export const input = {
   action: false,
   sprint: false,
   enabled: true,
+  pinch: 0,
+  tapX: 0, tapY: 0,
 };
+const aerialOn = () => document.body.classList.contains('aerial');
 
 const keys = new Set<string>();
 const pressed = new Set<string>();
@@ -44,7 +47,7 @@ export function initInput(canvas: HTMLCanvasElement, joy: HTMLElement, knob: HTM
   // ---- Mouse (desktop)
   document.addEventListener('pointerlockchange', () => { input.locked = document.pointerLockElement === canvas; if (!input.locked) input.action = false; });
   canvas.addEventListener('mousedown', (e) => {
-    if (input.touch) return;
+    if (input.touch || aerialOn()) return;
     if (!input.locked) { onLockRequest(); return; }
     if (e.button === 0) input.action = true;
     if (e.button === 2) pressed.add('KeyE');
@@ -57,14 +60,48 @@ export function initInput(canvas: HTMLCanvasElement, joy: HTMLElement, knob: HTM
     input.lookY += e.movementY * 0.0022;
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  window.addEventListener('wheel', (e) => { if (input.locked) pressed.add(e.deltaY > 0 ? 'WheelDown' : 'WheelUp'); }, { passive: true });
+  window.addEventListener('wheel', (e) => { if (input.locked || (aerialOn() && e.target === canvas)) pressed.add(e.deltaY > 0 ? 'WheelDown' : 'WheelUp'); }, { passive: true });
+
+  // ---- Visão aérea: arrastar, pinçar e tocar (toque e mouse)
+  const ap = new Map<number, { x: number; y: number; sx: number; sy: number; t: number }>();
+  let pd = 0;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!aerialOn() || !input.enabled) return;
+    ap.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
+    if (ap.size === 2) { const [a, b] = [...ap.values()]; pd = Math.hypot(a.x - b.x, a.y - b.y); }
+    canvas.setPointerCapture?.(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const p = ap.get(e.pointerId);
+    if (!p || !aerialOn()) return;
+    if (ap.size >= 2) {
+      p.x = e.clientX; p.y = e.clientY;
+      const [a, b] = [...ap.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pd > 0) input.pinch += Math.log(d / pd);
+      pd = d;
+      return;
+    }
+    const k = e.pointerType === 'mouse' ? 0.0022 : 0.0055;
+    input.lookX += (e.clientX - p.x) * k * (e.pointerType === 'mouse' && input.touch ? 0.0055 / 0.0022 : 1);
+    input.lookY += (e.clientY - p.y) * k * (e.pointerType === 'mouse' && input.touch ? 0.0055 / 0.0022 : 1);
+    p.x = e.clientX; p.y = e.clientY;
+  });
+  const aup = (e: PointerEvent) => {
+    const p = ap.get(e.pointerId);
+    if (!p) return;
+    if (ap.size === 1 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 9 && performance.now() - p.t < 400) { input.tapX = e.clientX; input.tapY = e.clientY; pressed.add('Tap'); }
+    ap.delete(e.pointerId); pd = 0;
+  };
+  canvas.addEventListener('pointerup', aup);
+  canvas.addEventListener('pointercancel', aup);
 
   // ---- Toque: joystick virtual à esquerda, olhar arrastando à direita
   let joyId = -1, lookId = -1;
   let jx = 0, jy = 0, lx = 0, ly = 0;
   const R = 56;
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse') return;
+    if (e.pointerType === 'mouse' || aerialOn()) return;
     input.touch = true;
     document.body.classList.add('touch');
     if (!input.enabled) return;

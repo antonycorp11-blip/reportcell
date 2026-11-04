@@ -4,7 +4,7 @@ import { CROPS, ERAS, ERA_ICONS, GOALS, HAND_TOOLS, IMPLEMENTS, ITEMS, UPGRADES,
 import { price, trend } from './economy';
 import { PARCELS, owned, isNextParcel } from './farm';
 import { parcelPrice, parcelLevel } from './world';
-import { SKILLS, SKMAP, BRANCHES, freePoints, lockReason } from './skills';
+import { NODES, NMAP, BRANCHES, freePoints, lockReason, has, available, type SNode } from './skills';
 import { WALLS } from './walls';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -21,13 +21,17 @@ export interface Handlers {
 }
 let H: Handlers;
 let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' | 'hub' = '';
-let selSkill = 'a1';
+let selSkill = 'root';
 let shopTab: Tab | 'land' | 'legacy' = 'def';
 let welcomeHtml = '';
 
+let lastTap = 0;
 const tap = (el: HTMLElement, f: (e: Event) => void) => {
-  el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
-  el.addEventListener('click', (e) => { e.stopPropagation(); f(e); });
+  let down = false;
+  el.addEventListener('pointerdown', (e) => { e.stopPropagation(); down = true; });
+  el.addEventListener('pointerup', (e) => { e.stopPropagation(); if (!down) return; down = false; lastTap = performance.now(); f(e); });
+  el.addEventListener('pointercancel', () => { down = false; });
+  el.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
 };
 
 export function initUI(h: Handlers) {
@@ -45,14 +49,14 @@ export function initUI(h: Handlers) {
   tap($('btnZoomOut'), () => H.zoom(1));
   $('panelWrap').addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
-    if (t.id === 'panelWrap') { if (panel !== 'over') closePanel(); return; }
+    if (t.id === 'panelWrap') { if (panel !== 'over' && performance.now() - lastTap > 500) closePanel(); return; }
     const b = t.closest('[data-a]') as HTMLElement | null;
     if (!b || (b as HTMLButtonElement).disabled) return;
     const a = b.dataset.a!, v = b.dataset.v!;
     switch (a) {
       case 'close': closePanel(); break;
       case 'restart': H.restart(); return;
-      case 'node': selSkill = v; break;
+      case 'node': if (dragged) { dragged = false; return; } selSkill = v; break;
       case 'go': openPanel(v as typeof panel); return;
       case 'learn': H.learn(v); break;
       case 'tab': shopTab = v as Tab; renderPanel(); break;
@@ -167,7 +171,7 @@ function renderPanel() {
       <div class="stats">Total ganho: <b>${fmt(s.totalEarned)}</b> · Colheitas: <b>${s.stats.harvested}</b> · Legado: <b>${s.legacy}</b> · Vitalidade: <b>${Math.round(vitality(s) * 100)}%</b></div>
       <div class="row"><span>🗑️ Recomeçar</span><button data-a="reset" class="danger">Apagar progresso</button></div>`;
   } else if (panel === 'skills') {
-    head = `🌟 Habilidades <span class="pts">${freePoints()} ponto${freePoints() === 1 ? '' : 's'}</span>`;
+    head = `🌳 Árvore da Vida <span class="pts">⭐ ${freePoints()}</span>`;
     content = skillTree();
   } else if (panel === 'hub') {
     head = '☰ Fazenda';
@@ -190,33 +194,82 @@ function renderPanel() {
   el.dataset.kind = panel;
   el.innerHTML = `<div class="phead"><h2>${head}</h2>${panel === 'over' ? '' : '<button class="x" data-a="close">✕</button>'}</div>${tabs}<div class="pbody scroll">${content}</div>`;
   if (kind === prevKind) (el.querySelector('.pbody') as HTMLElement).scrollTop = scroll;
+  if (panel === 'skills') bindTree();
 }
 
+const TW = 2200;
+const tv = { x: 0, y: 0, z: 0.9, init: false };
+let dragged = false;
 function skillTree(): string {
   const s = game.s;
-  const X = (b: number, x: number) => ((b + 0.5) / 3) * 100 + x * 9.5;
-  const Y = (row: number) => 18 + row * 23;
+  const fp = freePoints();
+  const C = (n: SNode) => (n.branch < 0 ? '#ffffff' : BRANCHES[n.branch].color);
   let lines = '';
-  for (const k of SKILLS) for (const r of k.req) {
-    const p = SKMAP[r];
-    const on = (s.skills[r] || 0) > 0;
-    lines += `<line x1="${X(p.branch, p.x)}" y1="${Y(p.row)}" x2="${X(k.branch, k.x)}" y2="${Y(k.row)}" stroke="${on ? BRANCHES[k.branch].color : '#d9cfb8'}" stroke-width="${on ? 4 : 3}" vector-effect="non-scaling-stroke" stroke-linecap="round"/>`;
+  for (const n of NODES) {
+    if (!n.parent) continue;
+    const p = NMAP[n.parent];
+    const on = has(n.id);
+    const av = !on && has(p.id);
+    lines += `<line x1="${p.x}" y1="${p.y}" x2="${n.x}" y2="${n.y}" class="${on ? 'on' : av ? 'av' : ''}" style="--c:${C(n)}"/>`;
   }
-  const heads = BRANCHES.map((b, i) => `<div class="bhead" style="left:${((i + 0.5) / 3) * 100}%;color:${b.color}">${b.icon} ${b.name}</div>`).join('');
-  const nodes = SKILLS.map((k) => {
-    const r = s.skills[k.id] || 0;
-    const lock = lockReason(k.id);
-    const st = r >= k.ranks ? 'max' : r > 0 ? 'part' : lock ? 'lock' : freePoints() > 0 ? 'avail' : '';
-    return `<button class="node ${st} ${selSkill === k.id ? 'sel' : ''}" data-a="node" data-v="${k.id}" style="left:${X(k.branch, k.x)}%;top:${Y(k.row)}%;--c:${BRANCHES[k.branch].color}"><span>${lock && !r ? '🔒' : k.icon}</span><i>${r}/${k.ranks}</i></button>`;
+  const nodes = NODES.map((n) => {
+    const own = has(n.id);
+    const av = available(n.id);
+    const st = own ? 'own' : av ? (fp >= n.cost ? 'canbuy' : 'reach') : 'lock';
+    return `<button class="sn ${st} ${n.key ? 'key' : ''} ${n.id === 'root' ? 'root' : ''} ${selSkill === n.id ? 'sel' : ''}" data-a="node" data-v="${n.id}" style="left:${n.x + TW / 2}px;top:${n.y + TW / 2}px;--c:${C(n)}"><span>${n.icon}</span>${n.key && !own ? `<i>${n.cost}⭐</i>` : ''}</button>`;
   }).join('');
-  const k = SKMAP[selSkill];
-  const r = s.skills[k.id] || 0;
-  const lock = lockReason(k.id);
-  const can = !lock && r < k.ranks && freePoints() > 0;
-  const info = `<div class="nodeInfo"><div class="ic">${k.icon}</div><div class="it"><b>${k.name}</b> <span class="lvl">${r}/${k.ranks}</span><p>${k.desc(r)}${lock ? ' · 🔒 ' + lock : ''}</p></div>
-    ${r >= k.ranks ? '<div class="done">✔</div>' : `<button class="buy" data-a="learn" data-v="${k.id}" ${can ? '' : 'disabled'}>Aprender<br>1 ⭐</button>`}</div>`;
-  return `<p class="note">Você ganha 1 ponto ⭐ a cada nível (e mais com o Legado). Toque num nó para ver os detalhes.</p>
-    <div class="tree"><svg viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>${heads}${nodes}</div>${info}`;
+  const labels = BRANCHES.map((b) => `<div class="blabel" style="left:${Math.cos(b.angle) * 830 + TW / 2}px;top:${Math.sin(b.angle) * 830 + TW / 2}px;color:${b.color}">${b.icon} ${b.name}</div>`).join('');
+  const n = NMAP[selSkill] ?? NMAP.root;
+  const own = has(n.id);
+  const lock = own ? null : lockReason(n.id);
+  const info = `<div class="sinfo" style="--c:${C(n)}"><div class="si">${n.icon}</div><div class="it"><b>${n.name}${n.key ? ' <span class="kt">NÓ-CHAVE</span>' : ''}</b><p>${n.desc}</p></div>
+    ${own ? '<div class="done">✔</div>' : `<button class="buy" data-a="learn" data-v="${n.id}" ${lock ? 'disabled' : ''}>${lock && lock.startsWith('Requer') ? '🔒' : 'Desbloquear'}<br>${n.cost} ⭐</button>`}</div>`;
+  void s;
+  return `<div class="stree" id="stree"><div class="sworld" id="sworld" style="width:${TW}px;height:${TW}px">
+      <svg width="${TW}" height="${TW}" viewBox="${-TW / 2} ${-TW / 2} ${TW} ${TW}">${lines}</svg>${labels}${nodes}</div>
+      <div class="shint">Arraste para explorar · pinça ou roda para zoom</div></div>${info}`;
+}
+
+function bindTree() {
+  const el = document.getElementById('stree');
+  const w = document.getElementById('sworld');
+  if (!el || !w) return;
+  const apply = () => { w.style.transform = `translate(${tv.x}px, ${tv.y}px) scale(${tv.z})`; };
+  if (!tv.init) { tv.init = true; tv.z = Math.min(1, el.clientHeight / 900); tv.x = el.clientWidth / 2 - (TW / 2) * tv.z; tv.y = el.clientHeight / 2 - (TW / 2) * tv.z + 40 * tv.z; }
+  apply();
+  const pts = new Map<number, { x: number; y: number }>();
+  let start = { x: 0, y: 0 }, pinch = 0;
+  el.addEventListener('pointerdown', (e) => {
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    start = { x: e.clientX, y: e.clientY }; dragged = false;
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); }
+  });
+  el.addEventListener('pointermove', (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    if (pts.size === 2) {
+      p.x = e.clientX; p.y = e.clientY;
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch > 0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinch);
+      pinch = d; dragged = true;
+      return;
+    }
+    tv.x += e.clientX - p.x; tv.y += e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) dragged = true;
+    apply();
+  });
+  const up = (e: PointerEvent) => { pts.delete(e.pointerId); pinch = 0; };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('pointerleave', up);
+  el.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 0.88 : 1.14); }, { passive: false });
+  function zoomAt(cx: number, cy: number, k: number) {
+    const r = el!.getBoundingClientRect();
+    const nz = Math.max(0.35, Math.min(1.8, tv.z * k));
+    const px = cx - r.left, py = cy - r.top;
+    tv.x = px - (px - tv.x) * (nz / tv.z); tv.y = py - (py - tv.y) * (nz / tv.z); tv.z = nz;
+    apply();
+  }
 }
 
 function landTab(): string {
@@ -346,7 +399,7 @@ let lastWall = 0;
 export function renderCropbar(inTractor: boolean, wallSel = lastWall) {
   const s = game.s;
   lastWall = wallSel;
-  const building = !inTractor && s.tool === 6;
+  const building = document.body.classList.contains('aerial') || (!inTractor && s.tool === 6);
   const show = building || (inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 5);
   const cb = $('cropbar');
   cb.classList.toggle('hidden', !show);

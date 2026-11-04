@@ -1,58 +1,121 @@
-import { game, sk } from './state';
+import { game, statCache } from './state';
 
-export interface SkillDef {
-  id: string; branch: number; name: string; icon: string; ranks: number;
-  desc: (r: number) => string; req: string[]; x: number; row: number;
+export interface SNode {
+  id: string; branch: number; name: string; icon: string; desc: string; cost: number;
+  stat?: string; val?: number; key?: boolean; parent: string | null; x: number; y: number;
 }
 
 export const BRANCHES = [
-  { name: 'Agronomia', icon: '🌱', color: '#5fae45' },
-  { name: 'Mecânica', icon: '⚙️', color: '#e8862c' },
-  { name: 'Comércio', icon: '💰', color: '#3d8fd6' },
+  { name: 'Fúria Verde', icon: '🌿', color: '#7dff5a', angle: -Math.PI / 2 },
+  { name: 'Cultivo', icon: '🌾', color: '#ffcf3a', angle: Math.PI / 6 },
+  { name: 'Sobrevivência', icon: '🛡️', color: '#4ac8ff', angle: (Math.PI * 5) / 6 },
 ];
 
-// x: -1 esquerda, 0 centro, 1 direita · row: 0..3
-export const SKILLS: SkillDef[] = [
-  { id: 'a1', branch: 0, name: 'Mão Verde', icon: '🌿', ranks: 3, x: 0, row: 0, req: [], desc: (r) => `Plantas crescem +8% mais rápido por ponto (atual +${r * 8}%)` },
-  { id: 'a2', branch: 0, name: 'Raízes Profundas', icon: '💧', ranks: 3, x: -1, row: 1, req: ['a1'], desc: (r) => `Água evapora 12% mais devagar por ponto (atual -${r * 12}%)` },
-  { id: 'a3', branch: 0, name: 'Colheita Farta', icon: '🧺', ranks: 3, x: 1, row: 1, req: ['a1'], desc: (r) => `+10% de produção por ponto (atual +${r * 10}%)` },
-  { id: 'a5', branch: 0, name: 'Dança da Chuva', icon: '🌧️', ranks: 1, x: -1, row: 2, req: ['a2'], desc: () => 'Chove com mais frequência e mais forte' },
-  { id: 'a4', branch: 0, name: 'Rotação Mestre', icon: '♻️', ranks: 1, x: 1, row: 2, req: ['a3'], desc: () => 'Rotação de culturas dá o dobro de fertilidade e repetir a cultura cansa menos o solo' },
-  { id: 'a6', branch: 0, name: 'Safra Dourada', icon: '✨', ranks: 1, x: 0, row: 3, req: ['a4', 'a5'], desc: () => '6% de chance de colheita dourada: produção ×5' },
+const STAT_TXT: Record<string, (v: number) => string> = {
+  pdmg: (v) => `+${v}% de dano das plantas`,
+  php: (v) => `+${v}% de vida das plantas`,
+  range: (v) => `+${v}% de alcance das plantas`,
+  rate: (v) => `Plantas atacam ${v}% mais rápido`,
+  growth: (v) => `+${v}% de velocidade de crescimento`,
+  yield: (v) => `+${v}% de produção na colheita`,
+  water: (v) => `Água evapora ${v}% mais devagar`,
+  tool: (v) => `Ferramentas ${v}% mais rápidas`,
+  tractor: (v) => `Trator ${v}% mais rápido`,
+  can: (v) => `+${v} de capacidade do regador`,
+  udmg: (v) => `+${v}% de dano da sua arma`,
+  uhp: (v) => `+${v} de vida máxima`,
+  base: (v) => `+${v}% de vida da casa`,
+  kill: (v) => `+${v}% de dinheiro por zumbi`,
+  walk: (v) => `+${v}% de velocidade a pé`,
+  sell: (v) => `+${v}% no preço de venda`,
+  order: (v) => `Pedidos especiais pagam +${v}% de bônus`,
+};
 
-  { id: 'm1', branch: 1, name: 'Braço Forte', icon: '💪', ranks: 3, x: 0, row: 0, req: [], desc: (r) => `Ferramentas manuais 15% mais rápidas por ponto (atual +${r * 15}%)` },
-  { id: 'm2', branch: 1, name: 'Passo Ligeiro', icon: '👟', ranks: 3, x: -1, row: 1, req: ['m1'], desc: (r) => `+8% de velocidade a pé por ponto (atual +${r * 8}%)` },
-  { id: 'm3', branch: 1, name: 'Motor Afinado', icon: '🔩', ranks: 3, x: 1, row: 1, req: ['m1'], desc: (r) => `Trator +10% mais rápido por ponto (atual +${r * 10}%)` },
-  { id: 'm5', branch: 1, name: 'Regador Mágico', icon: '🚿', ranks: 1, x: -1, row: 2, req: ['m2'], desc: () => 'O regador se enche sozinho aos poucos' },
-  { id: 'm4', branch: 1, name: 'Piloto GPS', icon: '🛰️', ranks: 1, x: 1, row: 2, req: ['m3'], desc: () => 'O trator se alinha sozinho nas fileiras e centraliza nos canteiros' },
-  { id: 'm6', branch: 1, name: 'Implemento Duplo', icon: '🚜', ranks: 1, x: 0, row: 3, req: ['m4', 'm5'], desc: () => '+2 fileiras de largura em todos os implementos' },
+type Def = [id: string, name: string, icon: string, stat: string, val: number] | [id: string, name: string, icon: string, desc: string];
+const isKey = (d: Def) => d.length === 4;
 
-  { id: 'c1', branch: 2, name: 'Lábia', icon: '🗣️', ranks: 3, x: 0, row: 0, req: [], desc: (r) => `+5% no preço de venda por ponto (atual +${r * 5}%)` },
-  { id: 'c2', branch: 2, name: 'Contatos', icon: '📇', ranks: 2, x: -1, row: 1, req: ['c1'], desc: (r) => `Pedidos especiais pagam +0,3× de bônus por ponto (atual +${(r * 0.3).toFixed(1)}×)` },
-  { id: 'c3', branch: 2, name: 'Armazém', icon: '📦', ranks: 3, x: 1, row: 1, req: ['c1'], desc: (r) => `+25% de capacidade do silo por ponto (atual +${r * 25}%)` },
-  { id: 'c4', branch: 2, name: 'Combo Lucrativo', icon: '🔥', ranks: 2, x: -1, row: 2, req: ['c2'], desc: (r) => `Bônus de combo ×${r + 2} (atual ×${r + 1})` },
-  { id: 'c5', branch: 2, name: 'Investidor', icon: '🏦', ranks: 1, x: 1, row: 2, req: ['c3'], desc: () => 'Rende juros: +0,5% do seu dinheiro a cada minuto' },
-  { id: 'c6', branch: 2, name: 'Magnata', icon: '👑', ranks: 1, x: 0, row: 3, req: ['c4', 'c5'], desc: () => '+15% em todas as vendas' },
+/** Cada ramo: espinha (do centro para fora) + duas forquilhas. */
+const TREE: { spine: Def[]; forkA: { at: number; nodes: Def[] }; forkB: { at: number; nodes: Def[] } }[] = [
+  {
+    spine: [
+      ['f1', 'Seiva Brava', '🗡️', 'pdmg', 6], ['f2', 'Casca Grossa', '🪵', 'php', 10], ['f3', 'Espinhos Afiados', '🌵', 'pdmg', 6],
+      ['f4', 'Raízes Longas', '📡', 'range', 6], ['f5', 'Ódio Vegetal', '😡', 'pdmg', 8], ['f6', 'Clorofila Turbo', '⚡', 'rate', 8],
+      ['d2', 'Fotossíntese Furiosa', '☀️', 'Plantas atacam +25% mais rápido e o laser do girassol atravessa zumbis'],
+    ],
+    forkA: { at: 1, nodes: [['f7', 'Fibra Dura', '🛡️', 'php', 12], ['f8', 'Seiva Curativa', '💚', 'php', 12], ['d1', 'Raízes de Aço', '⛓️', 'Plantas ganham +50% de vida e se curam durante a noite']] },
+    forkB: { at: 3, nodes: [['f9', 'Pólen Certeiro', '🎯', 'range', 8], ['f10', 'Fúria Ancestral', '🔥', 'pdmg', 8], ['d3', 'Veteranas', '🎖️', 'Plantas sobem de nível com metade dos abates']] },
+  },
+  {
+    spine: [
+      ['g1', 'Mão Verde', '🌱', 'growth', 6], ['g2', 'Colheita Farta', '🧺', 'yield', 8], ['g3', 'Adubo Vivo', '🧪', 'growth', 6],
+      ['a4', 'Rotação Mestre', '♻️', 'Rotação de culturas dá o dobro de fertilidade e repetir cansa menos o solo'],
+      ['g4', 'Celeiro Cheio', '🌽', 'yield', 8], ['g5', 'Sol Generoso', '🌞', 'growth', 8],
+      ['a6', 'Safra Dourada', '✨', '6% de chance de colheita dourada: produção ×5'],
+    ],
+    forkA: { at: 1, nodes: [['g6', 'Braço Forte', '💪', 'tool', 12], ['g7', 'Motor Afinado', '🔩', 'tractor', 12], ['m4', 'Piloto GPS', '🛰️', 'O trator se alinha sozinho nas fileiras e centraliza nos canteiros'], ['m6', 'Implemento Duplo', '🚜', '+2 fileiras de largura em todos os implementos']] },
+    forkB: { at: 3, nodes: [['g8', 'Regador Fundo', '🪣', 'can', 6], ['g9', 'Raízes Profundas', '💧', 'water', 15], ['m5', 'Regador Mágico', '🚿', 'O regador se enche sozinho aos poucos'], ['a5', 'Dança da Chuva', '🌧️', 'Chove com mais frequência e mais forte']] },
+  },
+  {
+    spine: [
+      ['s1', 'Pá Pesada', '⚒️', 'udmg', 12], ['s2', 'Couro Grosso', '❤️', 'uhp', 20], ['s3', 'Tijolo Extra', '🧱', 'base', 10],
+      ['s4', 'Caçador', '💰', 'kill', 10], ['s5', 'Golpe Certeiro', '🎯', 'udmg', 15], ['s6', 'Muralhas', '🏰', 'base', 12],
+      ['d4', 'Fortaleza Viva', '🏠', 'A casa se regenera 3 de vida por segundo durante a noite'],
+    ],
+    forkA: { at: 1, nodes: [['s7', 'Passo Ligeiro', '👟', 'walk', 8], ['s8', 'Fôlego', '🫁', 'uhp', 25], ['c4', 'Combo Lucrativo', '🔥', 'Bônus de combo de colheita em dobro']] },
+    forkB: { at: 3, nodes: [['s9', 'Lábia', '🗣️', 'sell', 6], ['s10', 'Contatos', '📇', 'order', 20], ['c5', 'Investidor', '🏦', 'Rende juros: +0,5% do seu dinheiro a cada minuto'], ['c6', 'Magnata', '👑', '+15% em todas as vendas']] },
+  },
 ];
-export const SKMAP: Record<string, SkillDef> = Object.fromEntries(SKILLS.map((k) => [k.id, k]));
 
-export function spentPoints(): number {
-  let n = 0;
-  for (const k in game.s.skills) n += game.s.skills[k];
-  return n;
-}
-export const totalPoints = () => game.s.level - 1 + game.s.legacy;
+export const NODES: SNode[] = [{ id: 'root', branch: -1, name: 'Coração da Terra', icon: '🌍', desc: 'A última terra viva. Tudo começa aqui.', cost: 0, parent: null, x: 0, y: 0 }];
+const R = 92;
+TREE.forEach((br, b) => {
+  const A = BRANCHES[b].angle;
+  const mk = (d: Def, parent: string, x: number, y: number) => {
+    const key = isKey(d);
+    NODES.push({
+      id: d[0], branch: b, name: d[1], icon: d[2], parent, x, y, key, cost: key ? 2 : 1,
+      desc: key ? (d[3] as string) : STAT_TXT[d[3] as string](d[4] as number),
+      stat: key ? undefined : (d[3] as string), val: key ? undefined : (d[4] as number),
+    });
+  };
+  br.spine.forEach((d, i) => {
+    const r = R * (i + 1.2);
+    mk(d, i === 0 ? 'root' : br.spine[i - 1][0], Math.cos(A) * r, Math.sin(A) * r);
+  });
+  for (const [fork, side] of [[br.forkA, -1], [br.forkB, 1]] as const) {
+    const base = br.spine[fork.at][0];
+    const r0 = R * (fork.at + 1.2);
+    fork.nodes.forEach((d, k) => {
+      const r = r0 + R * 0.62 * (k + 1);
+      const a = A + side * (0.42 + k * 0.08) * (1.6 / (fork.at + 1.6));
+      mk(d, k === 0 ? base : fork.nodes[k - 1][0], Math.cos(a) * r + Math.cos(A + side * Math.PI / 2) * 38 * (k + 1), Math.sin(a) * r + Math.sin(A + side * Math.PI / 2) * 38 * (k + 1));
+    });
+  }
+});
+export const NMAP: Record<string, SNode> = Object.fromEntries(NODES.map((n) => [n.id, n]));
+
+export const has = (id: string) => id === 'root' || (game.s.skills[id] || 0) > 0;
+export function spentPoints(): number { let n = 0; for (const k in game.s.skills) if (NMAP[k] && game.s.skills[k] > 0) n += NMAP[k].cost; return n; }
+export const totalPoints = () => game.s.level - 1 + game.s.legacy + game.s.nights;
 export const freePoints = () => totalPoints() - spentPoints();
+export const available = (id: string) => !has(id) && !!NMAP[id].parent && has(NMAP[id].parent!);
 
 export function lockReason(id: string): string | null {
-  const d = SKMAP[id];
-  for (const r of d.req) if (!sk(r)) return `Requer ${SKMAP[r].name}`;
+  const n = NMAP[id];
+  if (n.parent && !has(n.parent)) return `Requer ${NMAP[n.parent].name}`;
+  if (freePoints() < n.cost) return `Precisa de ${n.cost} ponto${n.cost > 1 ? 's' : ''}`;
   return null;
 }
 
 export function learn(id: string): boolean {
-  const d = SKMAP[id];
-  if (sk(id) >= d.ranks || lockReason(id) || freePoints() <= 0) return false;
-  game.s.skills[id] = sk(id) + 1;
+  if (has(id) || lockReason(id)) return false;
+  game.s.skills[id] = 1;
+  recalcStats();
   return true;
+}
+
+/** Soma os bônus genéricos dos nós aprendidos. */
+export function recalcStats() {
+  for (const k of Object.keys(statCache)) delete statCache[k];
+  for (const n of NODES) if (n.stat && has(n.id)) statCache[n.stat] = (statCache[n.stat] || 0) + (n.val || 0);
 }

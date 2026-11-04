@@ -337,7 +337,7 @@ body.touch #wavePreview { left: 50%; transform: translateX(-50%); bottom: auto; 
 #aerialBar button { pointer-events: auto; padding: 0.6em 1em; border-radius: 99px; font-weight: 700; font-size: 0.9em; background: var(--gl); color: var(--tx); border: 1px solid var(--gl2); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 #aerialBar #btnAerialBack { background: linear-gradient(#ffe39a, var(--amb)); color: #2a1a05; }
 body.aerial #aerialBar { display: flex; }
-body.aerial #bottom, body.aerial #rightBtns, body.aerial #crosshair, body.aerial #tileInfo, body.aerial #joyHint, body.aerial #hint { display: none !important; }
+body.aerial #toolbar, body.aerial #rightBtns, body.aerial #crosshair, body.aerial #tileInfo, body.aerial #joyHint, body.aerial #hint { display: none !important; }
 body.aerial #btnAerial { background: linear-gradient(#ffe39a, var(--amb)); }
 /* responsivo */
 @media (max-height: 520px) {
@@ -415,3 +415,55 @@ body.isNight #hud #goal { display: none; }
 }
 #hud .rb { background: rgba(255, 248, 232, 0.92); color: #2a1a05; border: 0; font-weight: 700; }
 #hud #btnHub { font-size: 1.25em; }
+
+/* =================== Árvore da Vida (incremental) =================== */
+#panel[data-kind=skills] { width: 100%; height: 100%; max-height: 100%; background: #070b08; border-radius: 18px; }
+#panel[data-kind=skills] .phead { background: linear-gradient(#1e2c1b, #10170e); border-bottom: 1px solid rgba(157, 255, 122, 0.2); }
+#panel[data-kind=skills] .phead h2 { color: #eafbd8; }
+#panel[data-kind=skills] .pts { background: #ffd23f; color: #2a1a05; }
+#panel[data-kind=skills] .x { background: rgba(255, 255, 255, 0.12); color: #fff; }
+#panel[data-kind=skills] .pbody { padding: 0; gap: 0; flex: 1; overflow: hidden; position: relative; min-height: 0; }
+#panel .stree, #panel .stree * { touch-action: none !important; }
+.stree { position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: grab;
+  background:
+    radial-gradient(1.5px 1.5px at 20% 30%, #fff8, transparent 60%), radial-gradient(1px 1px at 70% 20%, #fff7, transparent 60%),
+    radial-gradient(1.5px 1.5px at 40% 80%, #fff6, transparent 60%), radial-gradient(1px 1px at 85% 65%, #fff8, transparent 60%),
+    radial-gradient(1px 1px at 10% 70%, #fff5, transparent 60%), radial-gradient(1.5px 1.5px at 55% 45%, #fff4, transparent 60%),
+    radial-gradient(circle at 50% 55%, #1b2e1f 0%, #0c140e 45%, #050806 80%);
+  background-size: 180px 180px, 230px 230px, 200px 200px, 260px 260px, 150px 150px, 310px 310px, 100% 100%; }
+.sworld { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.sworld svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.sworld line { stroke: rgba(255, 255, 255, 0.13); stroke-width: 4; stroke-linecap: round; }
+.sworld line.on { stroke: var(--c); stroke-width: 7; filter: drop-shadow(0 0 6px var(--c)); }
+.sworld line.av { stroke: #ffd23f; stroke-width: 4; stroke-dasharray: 10 9; animation: sdash 0.9s linear infinite; }
+@keyframes sdash { to { stroke-dashoffset: -19; } }
+.sn { position: absolute; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #2c3a2f, #121a14); border: 3px solid rgba(255, 255, 255, 0.14); display: grid; place-items: center; font-size: 22px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); transition: transform 0.15s; }
+.sn span { filter: grayscale(1) brightness(0.55); }
+.sn.reach { border-color: color-mix(in srgb, var(--c) 60%, transparent); }
+.sn.reach span { filter: grayscale(0.4) brightness(0.85); }
+.sn.canbuy { border-color: #ffd23f; animation: sglow 1.2s ease-in-out infinite; }
+.sn.canbuy span { filter: none; }
+.sn.own { background: radial-gradient(circle at 35% 30%, #ffffff, var(--c) 55%, color-mix(in srgb, var(--c) 60%, #000)); border-color: #fff; box-shadow: 0 0 16px var(--c), 0 0 34px color-mix(in srgb, var(--c) 50%, transparent); }
+.sn.own span { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4)); }
+.sn.key { width: 68px; height: 68px; margin: -34px 0 0 -34px; border-radius: 18px; transform: rotate(45deg); font-size: 28px; border-width: 4px; }
+.sn.key span { transform: rotate(-45deg); }
+.sn.key i { transform: rotate(-45deg); }
+.sn.root { width: 92px; height: 92px; margin: -46px 0 0 -46px; font-size: 44px; background: radial-gradient(circle at 35% 30%, #fffbe0, #7dff5a 45%, #2a7a3a); border: 4px solid #fff; box-shadow: 0 0 30px #7dff5a, 0 0 70px rgba(125, 255, 90, 0.45); animation: sroot 3s ease-in-out infinite; }
+.sn.root span { filter: none; }
+.sn.sel { outline: 3px solid #fff; outline-offset: 5px; }
+.sn i { position: absolute; bottom: -10px; left: 50%; translate: -50% 0; font-style: normal; font-size: 11px; font-weight: 700; background: #ffd23f; color: #2a1a05; padding: 1px 6px; border-radius: 99px; white-space: nowrap; }
+.sn.key i { bottom: -6px; left: auto; right: -12px; translate: none; }
+@keyframes sglow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 210, 63, 0), 0 4px 10px rgba(0, 0, 0, 0.5); } 50% { box-shadow: 0 0 0 7px rgba(255, 210, 63, 0.45), 0 0 22px rgba(255, 210, 63, 0.6); } }
+@keyframes sroot { 0%, 100% { box-shadow: 0 0 30px #7dff5a, 0 0 70px rgba(125, 255, 90, 0.45); } 50% { box-shadow: 0 0 45px #7dff5a, 0 0 110px rgba(125, 255, 90, 0.6); } }
+.blabel { position: absolute; translate: -50% -50%; font-weight: 700; font-size: 26px; letter-spacing: 0.04em; white-space: nowrap; text-shadow: 0 0 12px currentColor, 0 2px 4px #000; pointer-events: none; opacity: 0.9; }
+.shint { position: absolute; top: 8px; left: 50%; translate: -50% 0; font-size: 0.7em; color: rgba(255, 255, 255, 0.55); pointer-events: none; }
+.sinfo { display: flex; align-items: center; gap: 0.7em; padding: 0.6em 0.8em; background: linear-gradient(#141c16, #0c120d); border-top: 1px solid rgba(255, 255, 255, 0.08); color: #f3f0e6; flex: none; }
+.sinfo .si { width: 2.4em; height: 2.4em; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 1.4em; background: radial-gradient(circle at 35% 30%, #fff, var(--c) 60%); box-shadow: 0 0 14px var(--c); }
+.sinfo .it b { color: #fff; }
+.sinfo .it p { color: #c9d4c4; }
+.sinfo .kt { font-size: 0.65em; background: var(--c); color: #111; padding: 1px 6px; border-radius: 99px; vertical-align: middle; }
+.sinfo .done { color: var(--c); }
+
+body.aerial #bottom { bottom: calc(64px + var(--sb)); }
+body.aerial #cropbar { display: flex !important; }
+#aerialBar #btnZoomIn, #aerialBar #btnZoomOut { background: rgba(255,248,232,0.92); color: #2a1a05; width: 2.8em; padding: 0.6em 0; }

@@ -64,20 +64,24 @@ export const bus = {
 export const game = { s: newState() };
 export const lv = (id: string) => game.s.up[id] || 0;
 export const sk = (id: string) => game.s.skills[id] || 0;
+/** bônus genéricos da árvore de habilidades (em %) */
+export const statCache: Record<string, number> = {};
+export const stat = (k: string) => statCache[k] || 0;
+export const pct = (k: string) => 1 + stat(k) / 100;
 
 export const xpNeed = (l: number) => Math.floor(40 * Math.pow(1.45, l - 1));
-export const growthMult = () => (1 + 0.12 * lv('growth')) * (1 + 0.05 * game.s.legacy) * (1 + 0.08 * sk('a1'));
-export const yieldMult = () => 1 + 0.15 * lv('yield') + 0.1 * sk('a3');
-export const sellMult = () => (1 + 0.06 * lv('price')) * (1 + 0.1 * game.s.legacy) * (1 + 0.05 * sk('c1')) * (sk('c6') ? 1.15 : 1);
-export const siloCap = () => Math.round(80 * (1 + lv('silo')) * (1 + 0.25 * sk('c3')));
+export const growthMult = () => (1 + 0.12 * lv('growth')) * (1 + 0.05 * game.s.legacy) * pct('growth');
+export const yieldMult = () => (1 + 0.15 * lv('yield')) * pct('yield');
+export const sellMult = () => (1 + 0.06 * lv('price')) * (1 + 0.1 * game.s.legacy) * pct('sell') * (sk('c6') ? 1.15 : 1);
+export const siloCap = () => Math.round(80 * (1 + lv('silo')) );
 export const siloUsed = () => { let n = 0; for (const k in game.s.inv) n += game.s.inv[k]; return n; };
-export const canCap = () => 12 + 12 * lv('can');
-export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots')) * (1 + 0.08 * sk('m2'));
-export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine')) * (1 + 0.1 * sk('m3'));
+export const canCap = () => 12 + 12 * lv('can') + stat('can');
+export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots')) * pct('walk');
+export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine')) * pct('tractor');
 export const implWidth = () => 1 + 2 * lv('width') + 2 * sk('m6');
 export const legacyGain = (s: State) => Math.max(1, Math.floor(s.nights / 2));
-export const baseMax = () => Math.round(400 * (1 + 0.5 * lv('fort')));
-export const playerMax = () => 100 + 40 * lv('medkit');
+export const baseMax = () => Math.round(400 * (1 + 0.5 * lv('fort')) * pct('base'));
+export const playerMax = () => 100 + 40 * lv('medkit') + stat('uhp');
 
 export function era(s: State): number {
   if (s.nights >= 15 || s.prestiges > 0) return 4;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CROPS } from './data';
-import { game, bus, growthMult, yieldMult, siloCap, siloUsed, lv, sk, addXp, vitality, type TileSave } from './state';
+import { game, bus, growthMult, yieldMult, siloCap, siloUsed, lv, sk, stat, pct, addXp, vitality, type TileSave } from './state';
 import { windMat, vcMat } from './gfx';
 import { grassTuft, soilGeometry, frameGeometry } from './crops';
 import { buildToonCrops } from './cropstoon';
@@ -26,8 +26,9 @@ export const T = {
   k: new Uint16Array(N),         // zumbis eliminados pela planta
 };
 export const CROP_HP = [40, 70, 55, 300, 60, 90, 480, 80];
-export const plantLevel = (t: number) => (T.k[t] >= 40 ? 3 : T.k[t] >= 15 ? 2 : T.k[t] >= 5 ? 1 : 0);
-export const tileMaxHp = (t: number) => CROP_HP[T.c[t]] * (0.3 + 0.7 * T.g[t]);
+export const hpMult = () => pct('php') * (sk('d1') ? 1.5 : 1);
+export const plantLevel = (t: number) => { const k = T.k[t] * (sk('d3') ? 2 : 1); return k >= 40 ? 3 : k >= 15 ? 2 : k >= 5 ? 1 : 0; };
+export const tileMaxHp = (t: number) => CROP_HP[T.c[t]] * hpMult() * (0.3 + 0.7 * T.g[t]);
 
 /** Zumbi comendo a planta. Retorna true se destruiu. */
 export function damageTile(t: number, d: number): boolean {
@@ -164,7 +165,7 @@ export function harvest(t: number, xpMult = 1): HarvestRes {
 /** Simulação do campo (crescimento e água). */
 export function step(dt: number) {
   const gm = growthMult();
-  const drain = 0.011 / (1 + 0.15 * lv('retain')) / (1 + 0.12 * sk('a2'));
+  const drain = 0.011 / (1 + 0.15 * lv('retain')) * (1 - Math.min(0.6, stat('water') / 100));
   const spr = lv('sprinkler') * 0.012;
   const delta = (spr + rain - drain) * dt;
   for (let t = 0; t < N; t++) {
