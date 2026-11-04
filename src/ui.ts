@@ -510,6 +510,17 @@ export function toast(msg: string, kind = '') {
   setTimeout(() => d.remove(), 3000);
 }
 
+let zcardT: ReturnType<typeof setTimeout> | undefined;
+/** Card grande de "novo inimigo". */
+export function zCard(items: { img: string; name: string; desc: string }[], when: string) {
+  const b = $('zcard');
+  b.innerHTML = `<div class="zh">⚠ NOVO INIMIGO <small>${when}</small></div>` + items.map((it) => `<div class="zi"><img src="${it.img}" alt=""><div><b>${it.name}</b><p>${it.desc}</p></div></div>`).join('');
+  b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+  clearTimeout(zcardT);
+  zcardT = setTimeout(() => b.classList.remove('show'), 7000);
+  b.onclick = () => b.classList.remove('show');
+}
+
 let bannerT: ReturnType<typeof setTimeout> | undefined;
 export function banner(title: string, sub: string) {
   const b = $('banner');

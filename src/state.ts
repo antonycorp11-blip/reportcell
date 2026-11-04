@@ -40,8 +40,8 @@ export interface State {
   rescued: boolean;
 }
 
-export const DAY_LEN = 240;
-export const dayLen = (nights: number) => (nights === 0 ? 240 : 180);
+export const DAY_LEN = 200;
+export const dayLen = (nights: number) => (nights === 0 ? 200 : 150);
 /** multiplicador de dificuldade: [quantidade, vida, dano] */
 export const diffK = () => ({ easy: [0.65, 0.7, 0.7], normal: [1, 1, 1], hard: [1.35, 1.4, 1.3] }[game.s.settings.diff ?? 'normal']);
 
@@ -57,7 +57,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
     skills: {}, tpCam: true,
-    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 150, walls: [], res: { wood: 12, metal: 3, mseed: 0, food: 2 }, entries: [], buffs: {}, weapon: 'pa', storySeen: false, rescueAt: 0, rescued: false,
+    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 110, walls: [], res: { wood: 8, metal: 2, mseed: 0, food: 1 }, entries: [], buffs: {}, weapon: 'pa', storySeen: false, rescueAt: 0, rescued: false,
   };
 }
 
@@ -87,7 +87,7 @@ export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots')) * pct('walk');
 export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine')) * pct('tractor');
 export const implWidth = () => 1 + 2 * lv('width') + 2 * sk('m6');
 export const legacyGain = (s: State) => Math.max(1, Math.floor(s.nights / 2));
-export const baseMax = () => Math.round(150 * (1 + 0.5 * lv('fort')) * pct('base'));
+export const baseMax = () => Math.round(110 * (1 + 0.5 * lv('fort')) * pct('base'));
 export const playerMax = () => 100 + 40 * lv('medkit') + stat('uhp') + (game.s.buffs?.soup ? 40 : 0);
 
 export function era(s: State): number {

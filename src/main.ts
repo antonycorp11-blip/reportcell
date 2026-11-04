@@ -16,11 +16,12 @@ import { uTime, addOutlines } from './gfx';
 import * as ui from './ui';
 import { Life } from './life';
 import { learn, NMAP } from './skills';
-import { Horde, ZDEF, eyeMat as zEyeMat, type Zombie, type ZKind } from './zombies';
+import { Horde, ZDEF, ZUNLOCK, eyeMat as zEyeMat, type Zombie, type ZKind } from './zombies';
 import { Defense } from './defense';
 import { LaneView, LMAP, lanesFor } from './lanes';
 import { Creatures } from './creatures';
 import { faceMats } from './zmodels';
+import { zPortrait } from './portrait';
 import { Minimap } from './minimap';
 import { Post } from './post';
 import { House, plankHp, maxPlanks } from './house';
@@ -633,16 +634,19 @@ function planWave(n: number) {
   const r = rng(n * 7919 + s.prestiges * 131 + 7);
   const lanes = lanesFor(n);
   const mod = n % 5 === 0 ? 'boss' : n % 4 === 0 ? 'blood' : n % 6 === 3 ? 'fog' : n >= 6 && n % 7 === 6 ? 'double' : null;
-  const total = Math.min(220, Math.round((12 + n * 6 + n * n * 0.25) * (mod === 'double' ? 1.6 : 1) * diffK()[0]));
+  const total = Math.min(260, Math.round((16 + n * 8 + n * n * 0.6) * (mod === 'double' ? 1.6 : 1) * diffK()[0]));
   const list: WaveEntry[] = [];
   const newest = lanes[lanes.length - 1];
+  // pesos por tipo conforme as noites avançam
+  const W: [ZKind, number][] = [['walker', Math.max(2, 10 - n)]];
+  for (const k in ZUNLOCK) { const u = ZUNLOCK[k as ZKind]!; if (n >= u) W.push([k as ZKind, Math.min(4, 1.2 + (n - u) * 0.45) * (k === 'mother' ? 0.25 : k === 'brute' || k === 'screamer' ? 0.5 : 1)]); }
+  const sum = W.reduce((a, b) => a + b[1], 0);
   for (let i = 0; i < total; i++) {
-    const v = r();
-    let kind: ZKind = 'walker';
-    if (v < 0.15 + Math.min(0.1, n * 0.02)) kind = 'runner';
-    else if (n >= 2 && v < 0.3) kind = 'brute';
-    else if (n >= 3 && v < 0.4) kind = 'digger';
-    else if (n >= 4 && v < 0.52) kind = 'crow';
+    let v = r() * sum, kind: ZKind = 'walker';
+    for (const [k, w] of W) { v -= w; if (v <= 0) { kind = k; break; } }
+    // garante que o inimigo novo apareça bastante na noite de estreia
+    const fresh = Object.keys(ZUNLOCK).filter((k) => ZUNLOCK[k as ZKind] === n) as ZKind[];
+    if (fresh.length && i % 6 === 3) kind = fresh[(i / 6 | 0) % fresh.length];
     // rota nova recebe parte maior na noite em que abre
     const lane = newest.unlock === n && r() < 0.5 ? newest : lanes[Math.floor(r() * lanes.length)];
     list.push({ kind, lane: lane.id });
@@ -661,8 +665,24 @@ function planNext() {
   void KIND_ICON;
   const newLane = lanesFor(n).find((l) => l.unlock === n && n > 1);
   const mod = plan.mod ? ` · <span class="pmod">${MODS[plan.mod].name}</span>` : '';
+  const fresh = (Object.keys(ZUNLOCK) as ZKind[]).filter((k) => ZUNLOCK[k] === n && n > 1);
+  if (fresh.length) setTimeout(() => showFresh(n, 'chega na próxima noite — prepare-se!'), 1500);
+  const freshTxt = fresh.length ? ` <span class="pnew">novo: ${fresh.map((k) => ZDEF[k].name).join(', ')}</span>` : '';
   const rescue = lv('radio') && !s.rescued ? ` · 🚁 resgate em ${Math.max(0, s.rescueAt - s.nights)}` : '';
-  ui.setPreview(`🧟 ${lanes}${rescue}${newLane ? ` <span class="pnew">nova rota ${newLane.arrow}</span>` : ''}${mod}`);
+  ui.setPreview(`🧟 ${lanes}${rescue}${newLane ? ` <span class="pnew">nova rota ${newLane.arrow}</span>` : ''}${freshTxt}${mod}`);
+}
+
+horde.onEvent = (e, z) => {
+  const d2 = camera.position.distanceToSquared(z.g.position);
+  if (e === 'scream' && d2 < 900) { sfx.scream(); shake = Math.max(shake, 0.08); }
+  if (e === 'boom' && d2 < 1600) { sfx.boom(); if (d2 < 100) shake = Math.max(shake, 0.25); }
+  if (e === 'shieldBreak') { sfx.whack(); if (d2 < 400) ui.toast('🛡️ Escudo quebrado!', 'good'); }
+};
+
+function showFresh(n: number, when: string) {
+  const fresh = (Object.keys(ZUNLOCK) as ZKind[]).filter((k) => ZUNLOCK[k] === n);
+  if (!fresh.length || over) return;
+  ui.zCard(fresh.map((k) => ({ img: zPortrait(renderer, k), name: ZDEF[k].name, desc: ZDEF[k].desc ?? '' })), when);
 }
 
 function laneOf(path: [number, number][]): string | null { for (const id in LMAP) if (LMAP[id].pts === path) return id; return null; }
@@ -671,7 +691,7 @@ function spawnOne(e: WaveEntry) {
   const n = s.nights + 1;
   const lane = LMAP[e.lane];
   const [x, z] = lane.pts[0];
-  horde.spawn(e.kind, x + (Math.random() - 0.5) * 4, z + (Math.random() - 0.5) * 4, (1 + 0.2 * (n - 1)) * diffK()[1], lane.pts);
+  horde.spawn(e.kind, x + (Math.random() - 0.5) * 4, z + (Math.random() - 0.5) * 4, (1 + 0.3 * (n - 1) + 0.015 * (n - 1) ** 2) * diffK()[1], lane.pts);
 }
 
 function startNight() {
@@ -697,6 +717,7 @@ function startNight() {
   spawnT = 3;
   ui.closePanel();
   if (RADIO[n]) setTimeout(() => ui.toast(RADIO[n], 'good'), 3500);
+  setTimeout(() => showFresh(n, 'esta noite!'), 3400);
   ui.banner(`🌙 Noite ${n}`, nightMod ? `${MODS[nightMod].name} · ${waveTotal} zumbis` : `${waveTotal} zumbis a caminho · suas plantas ganharam vida!`);
   sfx.night();
   hudDirty = true;
@@ -819,11 +840,18 @@ function hurtBase(d: number) {
 }
 
 const LOOT: Record<string, [string, number, number][]> = {
-  walker: [['wood', 0.6, 1], ['metal', 0.15, 1], ['food', 0.08, 1]],
-  runner: [['wood', 0.4, 1], ['mseed', 0.08, 1]],
-  brute: [['wood', 1, 2], ['metal', 0.8, 2], ['food', 0.3, 1]],
-  digger: [['metal', 0.7, 1], ['mseed', 0.25, 1]],
-  crow: [['mseed', 0.3, 1], ['wood', 0.3, 1]],
+  walker: [['wood', 0.35, 1], ['metal', 0.06, 1], ['food', 0.04, 1]],
+  runner: [['wood', 0.25, 1], ['mseed', 0.04, 1]],
+  brute: [['wood', 0.8, 2], ['metal', 0.5, 1], ['food', 0.2, 1]],
+  digger: [['metal', 0.4, 1], ['mseed', 0.15, 1]],
+  crow: [['mseed', 0.15, 1], ['wood', 0.2, 1]],
+  bloater: [['mseed', 0.3, 1], ['food', 0.1, 1]],
+  spitter: [['metal', 0.3, 1], ['wood', 0.3, 1]],
+  shield: [['metal', 0.9, 2], ['wood', 0.5, 1]],
+  leaper: [['wood', 0.4, 1], ['mseed', 0.1, 1]],
+  screamer: [['food', 0.3, 1], ['mseed', 0.2, 1]],
+  mother: [['mseed', 1, 2], ['food', 0.6, 1], ['metal', 0.6, 2]],
+  crawler: [['wood', 0.1, 1]],
   colossus: [['wood', 1, 8], ['metal', 1, 8], ['mseed', 1, 4], ['food', 1, 3]],
 };
 let nightLoot: Record<string, number> = {};

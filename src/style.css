@@ -572,3 +572,14 @@ body.warn #hud #phase { background: rgba(70, 10, 10, 0.85); border-color: #ff5a3
 .sworld .sn i { z-index: 1; }
 .sworld .sn .svgi { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .sworld .sn { padding: 0; }
+
+/* ---------- card de novo inimigo */
+#zcard { position: absolute; right: 12px; top: 50%; transform: translate(120%, -50%); width: min(320px, 46vw); max-height: 80vh; overflow: auto; background: linear-gradient(160deg, rgba(60, 14, 20, 0.94), rgba(24, 10, 14, 0.94)); border: 3px solid #ff5a3a; border-radius: 18px; padding: 10px 12px; color: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); transition: transform 0.45s cubic-bezier(.2, 1.4, .4, 1); z-index: 40; pointer-events: auto; }
+#zcard.show { transform: translate(0, -50%); }
+#zcard .zh { font-weight: 800; letter-spacing: 0.06em; color: #ffcf3a; font-size: 1.05em; animation: zblink 0.8s infinite alternate; }
+#zcard .zh small { display: block; color: #ffb0a0; font-weight: 500; letter-spacing: 0; font-size: 0.75em; animation: none; }
+#zcard .zi { display: flex; gap: 8px; align-items: center; margin-top: 6px; background: rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 4px 6px; }
+#zcard .zi img { width: 84px; height: 84px; flex: none; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.4)); }
+#zcard .zi b { font-size: 1.1em; color: #ffe0c8; }
+#zcard .zi p { margin: 2px 0 0; font-size: 0.82em; line-height: 1.25; color: #f0d8d0; }
+@keyframes zblink { from { opacity: 1; } to { opacity: 0.65; } }
