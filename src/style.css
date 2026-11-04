@@ -514,3 +514,32 @@ body.warn #hud #phase { background: rgba(70, 10, 10, 0.85); border-color: #ff5a3
 .float.dmg { color: #fff; font-size: 1.05em; }
 .float.crit { color: #ffe35a; font-size: 1.6em; text-shadow: 0 2px 0 #b03a0a, 0 0 12px rgba(255, 120, 0, 0.8); }
 .crop .svgi { width: 1.4em; height: 1.4em; color: #4a3a20; }
+
+/* =================== história =================== */
+#intro { position: fixed; inset: 0; z-index: 30; }
+.intro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #fff; padding: 20px; overflow: hidden; animation: fade 0.5s; }
+.irain { position: absolute; inset: -20% 0 0 0; background-image: repeating-linear-gradient(105deg, rgba(160,255,140,0.0) 0 22px, rgba(160,255,140,0.22) 22px 24px); background-size: 120px 120px; animation: irain 0.6s linear infinite; opacity: 0.7; pointer-events: none; }
+@keyframes irain { to { background-position: -40px 120px; } }
+.iart { display: flex; gap: 1.2em; margin-bottom: 0.6em; position: relative; }
+.ia { width: 4.2em; height: 4.2em; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,0.12); box-shadow: 0 0 30px rgba(157,255,122,0.25); animation: bob 2.4s ease-in-out infinite; }
+.ia1 { width: 5.5em; height: 5.5em; animation-delay: 0.3s; background: rgba(157,255,122,0.18); }
+.ia2 { animation-delay: 0.6s; }
+.ia .svgi { width: 2.4em; height: 2.4em; color: #c9ffb0; }
+.ia1 .svgi { width: 3.2em; height: 3.2em; }
+.intro h1 { font-size: clamp(1.4em, 4vw, 2.4em); margin: 0.2em 0; text-shadow: 0 3px 0 rgba(0,0,0,0.4); position: relative; }
+.intro p { max-width: 34em; font-size: 1.05em; opacity: 0.92; position: relative; line-height: 1.45; }
+.idots { display: flex; gap: 6px; margin: 1em 0; position: relative; }
+.idots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.3); }
+.idots i.on { background: #9dff7a; }
+.ibtns { display: flex; gap: 10px; position: relative; }
+.ibtns button { padding: 0.6em 1.4em; border-radius: 99px; font-weight: 700; font-size: 1em; }
+.iskip { background: rgba(255,255,255,0.15); color: #fff; }
+.inext { background: linear-gradient(#b8ff8a, #4fae3a); color: #133a0a; box-shadow: 0 4px 0 #2d6e1f; }
+.diary { display: flex; gap: 0.6em; background: #fff8e8; border: 1px dashed #c9a46c; border-radius: 14px; padding: 0.6em 0.8em; color: #5a4a30; }
+.diary .svgi { flex: none; width: 1.6em; height: 1.6em; color: #8a6a3a; }
+.diary p { margin: 0.2em 0 0; font-style: italic; font-size: 0.9em; }
+.ending { text-align: center; display: flex; flex-direction: column; gap: 0.5em; align-items: center; }
+.ending > .svgi { width: 3.4em; height: 3.4em; color: #3d8fd6; }
+.ending h2 { margin: 0; }
+.ending p { margin: 0.1em 0; }
+.big.alt { background: linear-gradient(#bfe6ff, #4ab6ff); box-shadow: 0 4px 0 #2a7ab0; color: #0a2a4a; }

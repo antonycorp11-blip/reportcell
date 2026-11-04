@@ -26,6 +26,7 @@ import { Post } from './post';
 import { House, plankHp, maxPlanks } from './house';
 import { Family, FAMILY, type Who } from './family';
 import { icon, RES } from './icons';
+import { introHtml, INTRO, diaryFor, RADIO } from './story';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
@@ -79,6 +80,19 @@ const creatures = new Creatures(scene, fx, high);
 creatures.aim = (t) => (defense.hasAim[t] ? { x: defense.aimX[t], z: defense.aimZ[t] } : null);
 creatures.charge = defense.charge;
 const walls = new Walls(scene, fx);
+const radioTower = (() => {
+  const g = new THREE.Group(); g.position.set(30, 0, 17);
+  const m = new THREE.MeshToonMaterial({ color: 0x9aa4ae });
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 14, 6), m); l.position.set(x * 0.9, 7, z * 0.9); l.rotation.set(-z * 0.06, 0, x * 0.06); g.add(l); }
+  for (let y = 1.5; y < 14; y += 2.2) { const r = new THREE.Mesh(new THREE.TorusGeometry(1.0 - y * 0.03, 0.05, 4, 4), m); r.rotation.x = Math.PI / 2; r.rotation.z = Math.PI / 4; r.position.y = y; g.add(r); }
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4, 6), m); ant.position.y = 16; g.add(ant);
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 6, 0, Math.PI * 2, 0, Math.PI / 3), new THREE.MeshToonMaterial({ color: 0xe8ecf0, side: THREE.DoubleSide })); dish.position.set(0, 12, -0.8); dish.rotation.x = -1.2; g.add(dish);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a1a })); light.position.y = 18.1; light.name = 'blink'; g.add(light);
+  addOutlines(g, 0.03);
+  g.visible = false;
+  scene.add(g);
+  return g;
+})();
 const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
 // lanterna (segue a câmera) — ilumina a noite
 const flashlight = new THREE.SpotLight(0xfff4dd, 0, 45, 0.55, 0.55, 1.2);
@@ -117,6 +131,7 @@ function applyState() {
   if (s.phase === 'night') { s.phase = 'day'; s.phaseT = 20; }
   horde.clear(); defense.reset();
   walls.load(s.walls);
+  radioTower.visible = lv('radio') > 0;
   if (!s.entries || s.entries.length !== house.entries.length) house.repairAll();
   house.refresh();
   family.comeOut();
@@ -646,7 +661,8 @@ function planNext() {
   void KIND_ICON;
   const newLane = lanesFor(n).find((l) => l.unlock === n && n > 1);
   const mod = plan.mod ? ` · <span class="pmod">${MODS[plan.mod].name}</span>` : '';
-  ui.setPreview(`🧟 ${lanes}${newLane ? ` <span class="pnew">nova rota ${newLane.arrow}</span>` : ''}${mod}`);
+  const rescue = lv('radio') && !s.rescued ? ` · 🚁 resgate em ${Math.max(0, s.rescueAt - s.nights)}` : '';
+  ui.setPreview(`🧟 ${lanes}${rescue}${newLane ? ` <span class="pnew">nova rota ${newLane.arrow}</span>` : ''}${mod}`);
 }
 
 function laneOf(path: [number, number][]): string | null { for (const id in LMAP) if (LMAP[id].pts === path) return id; return null; }
@@ -680,6 +696,7 @@ function startNight() {
   eyeTint();
   spawnT = 3;
   ui.closePanel();
+  if (RADIO[n]) setTimeout(() => ui.toast(RADIO[n], 'good'), 3500);
   ui.banner(`🌙 Noite ${n}`, nightMod ? `${MODS[nightMod].name} · ${waveTotal} zumbis` : `${waveTotal} zumbis a caminho · suas plantas ganharam vida!`);
   sfx.night();
   hudDirty = true;
@@ -698,7 +715,18 @@ function endNight() {
   const reward = Math.round((40 + s.nights * 35) * (nightMod === 'blood' || nightMod === 'double' ? 1.5 : 1) * gm);
   earn(reward);
   for (const k in nightLoot) s.res[k] = (s.res[k] || 0) + nightLoot[k];
-  ui.openPanel('grade', gradeHtml(grade, lost, reward));
+  if (lv('radio') && !s.rescued && s.nights >= s.rescueAt) {
+    s.rescued = true;
+    const gain = legacyGain(s) + 3;
+    ui.openPanel('grade', `<div class="ending">${icon('satellite')}<h2>O helicóptero pousou!</h2>
+      <p>Depois de <b>${s.nights} noites</b>, a Base Esperança encontrou vocês. Ana, Bia, Léo e o Vô Zé estão a salvo.</p>
+      <p>Mas o Vô se recusa a ir embora: “Essa terra está viva. Alguém precisa cuidar dela.”</p>
+      <p class="note">Zumbis eliminados: <b>${s.stats.kills}</b> · Recompensa de Legado: <b>+${gain}</b></p>
+      <button class="big" data-a="close">🌱 Ficar com o Vô (modo infinito)</button>
+      <button class="big alt" data-a="restart">🚁 Partir — nova história com +${gain} Legado</button></div>`);
+    s.legacy += 3;
+    sfx.level();
+  } else ui.openPanel('grade', gradeHtml(grade, lost, reward));
   addXp(10 + s.nights * 5);
   s.baseHp = Math.min(baseMax(), s.baseHp + baseMax() * 0.3);
   playerHp = playerMax();
@@ -975,6 +1003,7 @@ function gradeHtml(g: string, lost: number, reward: number): string {
   return `<div class="grade"><div class="gl" style="--c:${col}">${g}</div><div class="gi"><b>Noite ${s.nights} sobrevivida</b><p>${msg}</p>
     <p class="gs">Família ferida: <b>${Math.round(lost * 100)}%</b> · Zumbis eliminados: <b>${s.stats.kills}</b></p></div></div>
     <p class="note">Espólios que os zumbis deixaram cair:</p><div class="loot">${loot}</div>
+    <div class="diary">${icon('talk')}<div><b>Diário do pai — dia ${s.nights}</b><p>${diaryFor(s.nights)}</p></div></div>
     <p class="rew">Recompensa: <b>${fmt(reward)}</b> (nota ${g} ×${{ S: 2, A: 1.5, B: 1.2, C: 1 }[g]})</p>
     <button class="big" data-a="close">☀️ Começar o dia ${s.nights + 1}</button>`;
 }
@@ -1007,6 +1036,7 @@ const WORKSHOP: Record<string, { name: string; desc: string; need: Record<string
   porch: { name: 'Armadilha da varanda', desc: 'Estacas ao redor da casa ferem e atrasam zumbis', need: { wood: 10, metal: 3 }, max: 1 },
   spot: { name: 'Holofote', desc: 'Varre o campo à noite e deixa zumbis lentos', need: { metal: 6, wood: 2 }, max: 1 },
   turret: { name: 'Torreta do telhado', desc: 'Atira sozinha em zumbis perto da casa (nível 2: +50% dano)', need: { metal: 12, wood: 8 }, max: 2 },
+  radio: { name: 'Torre de rádio', desc: 'Chama a Base Esperança: resgate em 5 noites (a partir da noite 6)', need: { metal: 25, wood: 15, mseed: 4 }, max: 1 },
   kidcans: { name: 'Regadores das crianças', desc: 'Bia e Léo regam quase 2× mais rápido', need: { wood: 4, metal: 1 }, max: 1 },
 };
 let npcWho: Who = 'ana';
@@ -1026,7 +1056,7 @@ function openNpc(who: Who) {
   let body = '';
   if (who === 'ana') body = ['eat', 'soup', 'bread', 'pie'].map((k) => { const r = RECIPES[k]; return opt('r:' + k, r.name, r.desc + (r.buff && s.buffs[r.buff] ? ' · <b>ativo</b>' : ''), costHtml(r.need, r.inv), canPay(r.need, r.inv) && !(r.buff && s.buffs[r.buff])); }).join('');
   if (who === 'bia' || who === 'leo') body = opt('r:fert', RECIPES.fert.name, RECIPES.fert.desc + (s.buffs.fert ? ' · <b>ativo</b>' : ''), costHtml(RECIPES.fert.need, RECIPES.fert.inv), canPay(RECIPES.fert.need, RECIPES.fert.inv) && !s.buffs.fert) + opt('w:kidcans', WORKSHOP.kidcans.name, WORKSHOP.kidcans.desc, costHtml(WORKSHOP.kidcans.need), canPay(WORKSHOP.kidcans.need), lv('kidcans') >= 1);
-  if (who === 'ze') body = '<p class="note">🧬 Laboratório — fusões de plantas</p>' + FUSIONS.map((f) => { const c = CROPS[f.crop]; return opt('m:' + f.mut, `${c.def}`, `${f.a} + ${f.b} → ${c.role}`, costHtml(f.need, f.inv), canPay(f.need, f.inv), lv(f.mut) > 0); }).join('') + '<p class="note">⚔️ Forja — armas</p>' + Object.entries(WEAPONS).filter(([id]) => id !== 'pa').map(([id, w]) => opt('f:' + id, w.name, w.desc, costHtml(w.cost!), canPay(w.cost!), hasWeapon(id))).join('') + '<p class="note">🔧 Oficina — defesas da casa</p>' + ['plates', 'porch', 'spot', 'turret'].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
+  if (who === 'ze') body = '<p class="note">🧬 Laboratório — fusões de plantas</p>' + FUSIONS.map((f) => { const c = CROPS[f.crop]; return opt('m:' + f.mut, `${c.def}`, `${f.a} + ${f.b} → ${c.role}`, costHtml(f.need, f.inv), canPay(f.need, f.inv), lv(f.mut) > 0); }).join('') + '<p class="note">⚔️ Forja — armas</p>' + Object.entries(WEAPONS).filter(([id]) => id !== 'pa').map(([id, w]) => opt('f:' + id, w.name, w.desc, costHtml(w.cost!), canPay(w.cost!), hasWeapon(id))).join('') + '<p class="note">🔧 Oficina — defesas da casa</p>' + [...['plates', 'porch', 'spot', 'turret'], ...(s.nights >= 6 ? ['radio'] : [])].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
     + opt('fix', 'Consertar todas as entradas', 'O Vô prega tábuas em tudo que está quebrado', costHtml({ wood: Math.max(1, missingPlanks()) }), missingPlanks() > 0 && (s.res.wood || 0) >= missingPlanks(), missingPlanks() === 0);
   ui.openPanel('npc', `<div class="npc"><div class="np ${who}">${icon(who === 'ana' ? 'food' : who === 'ze' ? 'hammer' : 'drop')}</div><div><b>${FAMILY[who].name}</b> <small>${FAMILY[who].role}</small><p class="say">“${line}”</p></div></div>${body}`);
 }
@@ -1063,6 +1093,7 @@ function npcAction(v: string) {
     const w = WORKSHOP[id];
     if (lv(id) >= w.max || !payRes(w.need)) return;
     s.up[id] = lv(id) + 1;
+    if (id === 'radio') { s.rescueAt = s.nights + 5; radioTower.visible = true; ui.banner('📻 Torre de rádio no ar!', 'A Base Esperança respondeu: resgate em 5 noites. Aguentem firme!'); }
     house.refresh(); sfx.buy();
     ui.toast(`🔧 ${w.name} pronto!`, 'good');
   }
@@ -1166,18 +1197,36 @@ applyState();
 offlineProgress();
 ui.updateHud();
 
+function playIntro(done: () => void) {
+  const el = document.getElementById('intro')!;
+  let i = 0;
+  const show = () => { el.innerHTML = introHtml(i); el.classList.remove('hidden'); };
+  el.onclick = (e) => {
+    const b = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null;
+    if (!b) return;
+    sfx.click();
+    if (b.dataset.i === 'skip' || i >= INTRO.length - 1) { el.classList.add('hidden'); el.innerHTML = ''; done(); return; }
+    i++; show();
+  };
+  show();
+}
+
 document.getElementById('playBtn')!.addEventListener('click', () => {
   initAudio();
+  if (!s.storySeen) { startEl.classList.add('hidden'); playIntro(() => { s.storySeen = true; doSave(); startGame(); }); if (isTouch) toggleFullscreen(); return; }
+  startGame();
+});
+function startGame() {
   setSound(s.settings.sound);
   startEl.classList.add('hidden');
   document.getElementById('hud')!.classList.remove('hidden');
   playing = true;
-  if (isTouch) toggleFullscreen();
-  else canvas.requestPointerLock?.();
+  if (isTouch && !document.fullscreenElement) toggleFullscreen();
+  else if (!isTouch) canvas.requestPointerLock?.();
   if (s.inTractor) engine(true, 0);
   if (welcome) ui.openPanel('welcome', welcome);
   else if (s.stats.plowed === 0) ui.toast(isTouch ? '👋 Use o joystick para andar e o botão ⛏️ para arar a terra!' : '👋 WASD para andar, clique para usar a enxada ⛏️', 'good');
-});
+}
 
 // ------------------------------------------------------------------ loop principal
 let last = performance.now();
@@ -1351,6 +1400,7 @@ function frame(now: number) {
     }
   }
   laneView.update(dt, realTime);
+  if (radioTower.visible) radioTower.getObjectByName('blink')!.visible = Math.sin(realTime * 4) > 0;
   if (playing) {
     const live: Record<string, number> = {};
     if (s.phase === 'night') { for (const e of spawnQueue) live[e.lane] = (live[e.lane] || 0) + 1; for (const z of horde.list) if (!z.dead && z.path) { const id = laneOf(z.path); if (id) live[id] = (live[id] || 0) + 1; } }
