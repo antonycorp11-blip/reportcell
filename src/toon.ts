@@ -148,3 +148,8 @@ export function bands(g: THREE.BufferGeometry, y0: number, y1: number, step: num
     if (on) c.setXYZ(i, c.getX(i) * k, c.getY(i) * k, c.getZ(i) * k);
   }
 }
+
+import { injectWind } from './gfx';
+/** Material toon com vento (plantas de dia). */
+export const windToon = (k: number) => injectWind(toon({ side: THREE.DoubleSide }), k, 'wtoon');
+export const windOutline = (k: number) => injectWind(new THREE.MeshBasicMaterial({ color: 0x1c140c, side: THREE.BackSide }), k, 'wout');

@@ -41,6 +41,26 @@ export const cyl = (rt: number, rb: number, h: number, seg = 6, open = false) =>
 export const ico = (r: number, d = 0) => new THREE.IcosahedronGeometry(r, d);
 
 /** Material com balanço de vento no vertex shader. */
+export function injectWind<M extends THREE.Material>(m: M, k: number, key: string): M {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = uTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      float hh = max(position.y, 0.0);
+      vec3 wp = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+      #ifdef USE_INSTANCING
+        wp += (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+      #endif
+      float sw = sin(uTime * 1.7 + wp.x * 0.31 + wp.z * 0.23) + 0.45 * sin(uTime * 3.3 + wp.z * 0.71 + wp.x * 0.13);
+      transformed.x += sw * ${k.toFixed(4)} * hh * hh;
+      transformed.z += cos(uTime * 1.4 + wp.x * 0.27) * ${(k * 0.6).toFixed(4)} * hh * hh;`,
+    );
+  };
+  m.customProgramCacheKey = () => key + k;
+  return m;
+}
+
 export function windMat(k = 0.08, opts: THREE.MeshLambertMaterialParameters = {}): THREE.MeshLambertMaterial {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, ...opts });
   m.onBeforeCompile = (sh) => {

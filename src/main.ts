@@ -1002,6 +1002,7 @@ function frame(now: number) {
     camera.lookAt(lookTarget);
   }
 
+  view.cam.copy(camera.position);
   view.update(dt);
   life.update(dt, realTime, camera.position);
   if (playing && !over) {

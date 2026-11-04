@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { CROPS } from './data';
 import { game, bus, growthMult, yieldMult, siloCap, siloUsed, lv, sk, addXp, vitality, type TileSave } from './state';
 import { windMat, vcMat } from './gfx';
-import { buildCropGeometries, grassTuft, soilGeometry, frameGeometry } from './crops';
+import { grassTuft, soilGeometry, frameGeometry } from './crops';
+import { buildToonCrops } from './cropstoon';
+import { windToon, windOutline, hull } from './toon';
 
 export const TILE = 2, PN = 10, PCOUNT = 9, N = PN * PN * PCOUNT;
 export interface Parcel { id: number; x0: number; z0: number; fert: number }
@@ -219,6 +221,8 @@ export class FarmView {
   soil: THREE.InstancedMesh;
   grass: THREE.InstancedMesh;
   crops: THREE.InstancedMesh[];
+  outlines: THREE.InstancedMesh[];
+  cam = new THREE.Vector3();
   frames: THREE.InstancedMesh;
   private timer = 0;
 
@@ -227,8 +231,17 @@ export class FarmView {
     this.soil.receiveShadow = true;
     this.grass = new THREE.InstancedMesh(grassTuft(), windMat(0.12, { side: THREE.DoubleSide, flatShading: false }), N);
     this.grass.receiveShadow = true;
-    const cropMat = windMat(0.05, { side: THREE.DoubleSide });
-    this.crops = buildCropGeometries().map((g) => {
+    const cropMat = windToon(0.05);
+    const outMat = windOutline(0.05);
+    const geos = buildToonCrops();
+    this.outlines = geos.map((g) => {
+      const m = new THREE.InstancedMesh(hull(g, 0.022), outMat, N);
+      m.count = 0; m.frustumCulled = false;
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(m);
+      return m;
+    });
+    this.crops = geos.map((g) => {
       const m = new THREE.InstancedMesh(g, cropMat, N);
       m.castShadow = high; m.receiveShadow = true;
       return m;
@@ -268,6 +281,8 @@ export class FarmView {
     const gFree = new THREE.Color().copy(G_FDRY).lerp(G_FLUSH, vit * 0.8);
     let ns = 0, ng = 0;
     const nc = new Array(this.crops.length).fill(0);
+    const no = new Array(this.crops.length).fill(0);
+    const cx = this.cam.x, cz = this.cam.z;
     for (let t = 0; t < N; t++) {
       const own = owned[(t / 100) | 0] === 1;
       const x = tileX(t), z = tileZ(t);
@@ -308,11 +323,13 @@ export class FarmView {
         else if (T.w[t] < 0.08) col.multiply(new THREE.Color(0.9, 0.82, 0.6));
         mesh.setColorAt(nc[c], col);
         nc[c]++;
+        if ((x - cx) ** 2 + (z - cz) ** 2 < 1600) this.outlines[c].setMatrixAt(no[c]++, m4);
       }
     }
     this.soil.count = ns;
     this.grass.count = ng;
     this.crops.forEach((m, i) => { m.count = nc[i]; });
+    this.outlines.forEach((m, i) => { m.count = no[i]; m.instanceMatrix.needsUpdate = true; });
     for (const m of [this.soil, this.grass, ...this.crops]) {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
