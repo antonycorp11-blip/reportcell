@@ -1,5 +1,5 @@
 import { CROPS, ITEMS, PRODUCTS } from './data';
-import { game, bus, earn, sellMult, siloCap, siloUsed, lv } from './state';
+import { game, bus, earn, sellMult, siloCap, siloUsed, lv, sk } from './state';
 import * as farm from './farm';
 
 function hash(s: string) { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 1000; return h / 1000; }
@@ -41,7 +41,7 @@ export function newOrder() {
   const item = items[Math.floor(Math.random() * items.length)];
   const base = 8 + game.s.level * 3;
   const qty = Math.round(base * (0.7 + Math.random() * 0.8) / (ITEMS[item].price > 60 ? 2 : 1));
-  game.s.order = { item, qty: Math.max(5, Math.min(qty, Math.floor(siloCap() * 0.8))), bonus: 1.5 + Math.round(Math.random() * 7) / 10, time: 300 };
+  game.s.order = { item, qty: Math.max(5, Math.min(qty, Math.floor(siloCap() * 0.8))), bonus: 1.5 + Math.round(Math.random() * 7) / 10 + 0.3 * sk('c2'), time: 300 };
 }
 
 export function deliver(): number {
@@ -53,10 +53,10 @@ export function deliver(): number {
 }
 
 // ------------------------------------------------------- Simulação geral
-let robotAcc = 0, truckAcc = 0;
+let robotAcc = 0, truckAcc = 0, interestAcc = 0;
 const procAcc: Record<string, number> = {};
 
-export interface SimEvents { robotHarvest?: (t: number, units: number) => void; truck?: (gain: number) => void }
+export interface SimEvents { robotHarvest?: (t: number, units: number) => void; truck?: (gain: number) => void; interest?: (gain: number) => void }
 
 export function simStep(dt: number, ev: SimEvents = {}) {
   const s = game.s;
@@ -103,6 +103,12 @@ export function simStep(dt: number, ev: SimEvents = {}) {
       truckAcc = 0;
       if (siloUsed() >= siloCap() * 0.75) { const g = sellAll(0.9); if (g > 0) ev.truck?.(g); }
     }
+  }
+
+  // Juros (habilidade Investidor)
+  if (sk('c5')) {
+    interestAcc += dt;
+    if (interestAcc >= 60) { interestAcc -= 60; const g = Math.round(Math.min(s.money * 0.005, 400 * s.level)); if (g > 0) { earn(g); ev.interest?.(g); } }
   }
 
   // Pedido

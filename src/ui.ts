@@ -4,6 +4,7 @@ import { CROPS, ERAS, ERA_ICONS, GOALS, HAND_TOOLS, IMPLEMENTS, ITEMS, UPGRADES,
 import { price, trend } from './economy';
 import { PARCELS, owned } from './farm';
 import { parcelPrice, parcelLevel } from './world';
+import { SKILLS, SKMAP, BRANCHES, freePoints, lockReason } from './skills';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -13,9 +14,11 @@ export interface Handlers {
   tool(i: number): void; crop(i: number): void;
   open(): void; close(): void;
   setting(k: string, v: unknown): void; reset(): void; fullscreen(): void;
+  learn(id: string): void; toggleCam(): void;
 }
 let H: Handlers;
-let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' = '';
+let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' = '';
+let selSkill = 'a1';
 let shopTab: Tab | 'land' | 'legacy' = 'agro';
 let welcomeHtml = '';
 
@@ -29,6 +32,8 @@ export function initUI(h: Handlers) {
   tap($('btnShop'), () => openPanel('shop'));
   tap($('btnMarket'), () => openPanel('market'));
   tap($('btnMenu'), () => openPanel('menu'));
+  tap($('btnSkills'), () => openPanel('skills'));
+  tap($('btnCam'), () => H.toggleCam());
   $('panelWrap').addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
     if (t.id === 'panelWrap') { closePanel(); return; }
@@ -37,6 +42,8 @@ export function initUI(h: Handlers) {
     const a = b.dataset.a!, v = b.dataset.v!;
     switch (a) {
       case 'close': closePanel(); break;
+      case 'node': selSkill = v; break;
+      case 'learn': H.learn(v); break;
       case 'tab': shopTab = v as Tab; renderPanel(); break;
       case 'buy': H.buy(v); break;
       case 'parcel': H.buyParcel(Number(v)); break;
@@ -146,6 +153,9 @@ function renderPanel() {
       </div>
       <div class="stats">Total ganho: <b>${fmt(s.totalEarned)}</b> · Colheitas: <b>${s.stats.harvested}</b> · Legado: <b>${s.legacy}</b> · Vitalidade: <b>${Math.round(vitality(s) * 100)}%</b></div>
       <div class="row"><span>🗑️ Recomeçar</span><button data-a="reset" class="danger">Apagar progresso</button></div>`;
+  } else if (panel === 'skills') {
+    head = `🌟 Habilidades <span class="pts">${freePoints()} ponto${freePoints() === 1 ? '' : 's'}</span>`;
+    content = skillTree();
   } else if (panel === 'welcome') {
     head = '🌅 Bem-vindo de volta!';
     content = welcomeHtml + '<button class="big" data-a="close">Continuar</button>';
@@ -154,6 +164,33 @@ function renderPanel() {
   el.dataset.kind = panel;
   el.innerHTML = `<div class="phead"><h2>${head}</h2><button class="x" data-a="close">✕</button></div>${tabs}<div class="pbody scroll">${content}</div>`;
   if (kind === prevKind) (el.querySelector('.pbody') as HTMLElement).scrollTop = scroll;
+}
+
+function skillTree(): string {
+  const s = game.s;
+  const X = (b: number, x: number) => ((b + 0.5) / 3) * 100 + x * 9.5;
+  const Y = (row: number) => 18 + row * 23;
+  let lines = '';
+  for (const k of SKILLS) for (const r of k.req) {
+    const p = SKMAP[r];
+    const on = (s.skills[r] || 0) > 0;
+    lines += `<line x1="${X(p.branch, p.x)}" y1="${Y(p.row)}" x2="${X(k.branch, k.x)}" y2="${Y(k.row)}" stroke="${on ? BRANCHES[k.branch].color : '#d9cfb8'}" stroke-width="${on ? 4 : 3}" vector-effect="non-scaling-stroke" stroke-linecap="round"/>`;
+  }
+  const heads = BRANCHES.map((b, i) => `<div class="bhead" style="left:${((i + 0.5) / 3) * 100}%;color:${b.color}">${b.icon} ${b.name}</div>`).join('');
+  const nodes = SKILLS.map((k) => {
+    const r = s.skills[k.id] || 0;
+    const lock = lockReason(k.id);
+    const st = r >= k.ranks ? 'max' : r > 0 ? 'part' : lock ? 'lock' : freePoints() > 0 ? 'avail' : '';
+    return `<button class="node ${st} ${selSkill === k.id ? 'sel' : ''}" data-a="node" data-v="${k.id}" style="left:${X(k.branch, k.x)}%;top:${Y(k.row)}%;--c:${BRANCHES[k.branch].color}"><span>${lock && !r ? '🔒' : k.icon}</span><i>${r}/${k.ranks}</i></button>`;
+  }).join('');
+  const k = SKMAP[selSkill];
+  const r = s.skills[k.id] || 0;
+  const lock = lockReason(k.id);
+  const can = !lock && r < k.ranks && freePoints() > 0;
+  const info = `<div class="nodeInfo"><div class="ic">${k.icon}</div><div class="it"><b>${k.name}</b> <span class="lvl">${r}/${k.ranks}</span><p>${k.desc(r)}${lock ? ' · 🔒 ' + lock : ''}</p></div>
+    ${r >= k.ranks ? '<div class="done">✔</div>' : `<button class="buy" data-a="learn" data-v="${k.id}" ${can ? '' : 'disabled'}>Aprender<br>1 ⭐</button>`}</div>`;
+  return `<p class="note">Você ganha 1 ponto ⭐ a cada nível (e mais com o Legado). Toque num nó para ver os detalhes.</p>
+    <div class="tree"><svg viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>${heads}${nodes}</div>${info}`;
 }
 
 function landTab(): string {
@@ -203,6 +240,11 @@ export function updateHud() {
   $('mSilo').classList.toggle('full', used >= cap);
   $('siloTxt').textContent = `${used}/${cap}`;
   $('mCan').style.display = s.inTractor ? 'none' : '';
+  const fp = freePoints();
+  const b = $('skBadge');
+  b.textContent = String(fp);
+  b.classList.toggle('hidden', fp <= 0);
+  $('btnCam').classList.toggle('hidden', !s.inTractor);
 }
 
 export function setClock(dayTime: number, day: number, raining: boolean) {

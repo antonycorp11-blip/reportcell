@@ -187,3 +187,78 @@ export function prism(w: number, h: number, d: number): THREE.BufferGeometry {
   g.computeVertexNormals();
   return g;
 }
+
+/** Escurece a base e clareia o topo (oclusão falsa) usando a altura dos vértices. */
+export function shade(g: THREE.BufferGeometry, min = 0.55, h?: number): THREE.BufferGeometry {
+  g.computeBoundingBox();
+  const top = h ?? g.boundingBox!.max.y;
+  const pos = g.attributes.position, col = g.attributes.color;
+  if (!col) return g;
+  for (let i = 0; i < pos.count; i++) {
+    const k = min + (1 - min) * Math.min(1, Math.max(0, pos.getY(i) / top));
+    col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k);
+  }
+  col.needsUpdate = true;
+  return g;
+}
+
+/** Tufo de folhas de grama (triângulos finos com normais para cima = visual macio). */
+export function blades(r: () => number, n: number, spread: number, hMin: number, hMax: number, cols: number[]): THREE.BufferGeometry {
+  const pos: number[] = [], nor: number[] = [], col: number[] = [];
+  const c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const x = (r() - 0.5) * 2 * spread, z = (r() - 0.5) * 2 * spread;
+    const h = hMin + r() * (hMax - hMin), w = 0.035 + r() * 0.035, a = r() * Math.PI;
+    const bend = (r() - 0.5) * 0.35;
+    const dx = Math.cos(a) * w, dz = Math.sin(a) * w;
+    pos.push(x - dx, 0, z - dz, x + dx, 0, z + dz, x + bend, h, z + bend * 0.5);
+    for (let k = 0; k < 3; k++) nor.push(0, 1, 0);
+    c.set(cols[i % cols.length]);
+    col.push(c.r, c.g, c.b, c.r, c.g, c.b, c.r * 1.08, c.g * 1.08, c.b * 1.0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
+/** UV planar a partir de x/z do mundo. */
+export function planarUV(g: THREE.BufferGeometry, scale: number) {
+  const p = g.attributes.position;
+  const uv = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) { uv[i * 2] = p.getX(i) / scale; uv[i * 2 + 1] = p.getZ(i) / scale; }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
+
+/** Textura procedural de ruído (detalhe para grama/terra). */
+export function noiseTexture(kind: 'grass' | 'dirt', size = 256): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d')!;
+  const img = x.createImageData(size, size);
+  const r = rng(kind === 'grass' ? 101 : 202);
+  for (let i = 0; i < size * size; i++) {
+    const px = i % size, py = (i / size) | 0;
+    const n = fbm(px / 18, py / 18);
+    let v = kind === 'grass' ? 0.8 + n * 0.25 + (r() - 0.5) * 0.12 : 0.78 + n * 0.28 + (r() - 0.5) * 0.1;
+    if (kind === 'dirt' && r() < 0.015) v *= 0.7;
+    if (kind === 'grass' && r() < 0.02) v *= 1.12;
+    const b = Math.max(0, Math.min(255, v * 255));
+    img.data[i * 4] = b; img.data[i * 4 + 1] = b; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  // estrias/pedrinhas
+  if (kind === 'dirt') {
+    for (let i = 0; i < 70; i++) {
+      x.fillStyle = `rgba(${r() < 0.5 ? '255,250,235' : '60,40,20'},${0.12 + r() * 0.15})`;
+      x.beginPath(); x.ellipse(r() * size, r() * size, 1 + r() * 3, 1 + r() * 2.5, r() * 3, 0, Math.PI * 2); x.fill();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.NoColorSpace;
+  t.anisotropy = 4;
+  return t;
+}

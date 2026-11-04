@@ -1,7 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { CROPS, HAND_TOOLS, IMPLEMENTS, UPMAP, GOALS, upCost } from './data';
-import { game, bus, load, newState, save, wipe, fmt, lv, canCap, implWidth, tractorSpeed, walkSpeed, earn, spend, siloCap, siloUsed, legacyGain, type State } from './state';
+import { game, bus, load, newState, save, wipe, fmt, lv, sk, canCap, implWidth, tractorSpeed, walkSpeed, earn, spend, siloCap, siloUsed, legacyGain, type State } from './state';
 import * as farm from './farm';
 import { FarmView, tileX, tileZ, isOwned, T, PARCELS } from './farm';
 import { World, POS, parcelPrice, parcelLevel, parcelSignPos } from './world';
@@ -14,6 +14,8 @@ import { simStep, sell, sellAll, deliver } from './economy';
 import { resolve } from './physics';
 import { uTime } from './gfx';
 import * as ui from './ui';
+import { Life } from './life';
+import { learn, SKMAP } from './skills';
 
 const DAY = 480;
 const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -49,6 +51,8 @@ const view = new FarmView(scene, high);
 const player = new Player(camera);
 vmScene.add(player.view);
 const tractor = new Tractor(scene);
+const life = new Life(scene, fx);
+life.onUnlock = (name) => { if (playing) { ui.banner('✨ A fazenda evoluiu!', name); sfx.level(); } };
 
 // ------------------------------------------------------------------ estado inicial
 function applyState() {
@@ -139,6 +143,7 @@ function buyUpgrade(id: string) {
   } else if (id === 'robots' && l === 0) ui.banner('🤖 Era da Automação!', 'Drones colhem por você — até offline');
   else if (id === 'multi') ui.banner('✨ Kit Multiuso!', 'A ferramenta faz a ação certa em cada canteiro');
   else ui.toast(`${u.icon} ${u.name} → nível ${l + 1}`, 'good');
+  if (id === 'robots') world.refresh();
   if (id === 'width') tractor.setMode(s.implement, implWidth());
   if (id === 'can') s.can = canCap();
   ui.invalidateBars();
@@ -190,6 +195,15 @@ ui.initUI({
   sellAll() { const g = sellAll(); if (g) moneyFloat(g, true); },
   deliver() { const g = deliver(); if (g) { moneyFloat(g, true); ui.toast('📦 Pedido entregue!', 'good'); } },
   prestige,
+  learn(id) {
+    if (!learn(id)) { sfx.error(); return; }
+    sfx.buy();
+    ui.toast(`${SKMAP[id].icon} ${SKMAP[id].name} aprendida!`, 'good');
+    tractor.setMode(s.implement, implWidth());
+    fx.spawn(player.pos.x, 2, player.pos.z, 0xffd23f, 25, 1.5, 5, 6, 1.2);
+    hudDirty = true;
+  },
+  toggleCam,
   tool: selectTool,
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); } },
   open() { input.enabled = false; input.action = false; if (document.pointerLockElement) document.exitPointerLock(); },
@@ -215,6 +229,16 @@ function selectTool(i: number) {
   sfx.click();
   ui.renderToolbar(s.inTractor);
   updateActionIcon();
+}
+
+function toggleCam() {
+  if (!s.inTractor) return;
+  s.tpCam = !s.tpCam;
+  camSnap = true;
+  player.pitch = -0.25;
+  tractor.headYaw = 0;
+  ui.toast(s.tpCam ? '🎥 Câmera em terceira pessoa' : '🎥 Câmera na cabine');
+  sfx.click();
 }
 
 function toggleFullscreen() {
@@ -268,10 +292,11 @@ function harvestTile(t: number): boolean {
   fx.spawn(x, 0.8, z, 0xffd23f, 10, 1.2, 4, 7, 0.9);
   fx.spawn(x, 0.5, z, 0x9fd65a, 6, 1.5, 3, 9, 0.7);
   ui.float3d(`+${r.units} ${C.icon}`, tp.set(x, 1.4, z), camera, 'crop');
+  if (r.gold) { ui.float3d('✨ SAFRA DOURADA ×5!', tp.set(x, 2.4, z), camera, 'money'); fx.spawn(x, 1, z, 0xffd700, 30, 2, 6, 6, 1.2); sfx.combo(); }
   if (r.rot && Math.random() < 0.5) ui.float3d('♻️ Rotação +fertilidade', tp.set(x, 2.1, z), camera, 'rot');
   if (soundT <= 0) { sfx.harvest(combo); soundT = 0.06; }
   if (combo % 10 === 0) {
-    const bonus = Math.round(combo * 1.5 * s.level);
+    const bonus = Math.round(combo * 1.5 * s.level * (1 + sk('c4')));
     earn(bonus);
     ui.floatAt(`COMBO ×${combo}! +${fmt(bonus)}`, window.innerWidth / 2, window.innerHeight * 0.32, 'money big');
     sfx.combo();
@@ -306,7 +331,7 @@ function applyTool(t: number, action: number, fromTractor: boolean): boolean {
 }
 
 const actionSfx = [sfx.plow, sfx.plant, sfx.water, () => { /* colheita tem som próprio */ }];
-let cooldown = 0;
+let cooldown = 0, canAcc = 0;
 function useHand() {
   const t0 = targetTile();
   if (t0 < 0) return;
@@ -321,7 +346,7 @@ function useHand() {
   if (done.size) {
     player.use();
     for (const a of done) actionSfx[a]();
-    cooldown = s.tool === 3 ? 0.16 : s.tool === 2 ? 0.2 : 0.26;
+    cooldown = (s.tool === 3 ? 0.16 : s.tool === 2 ? 0.2 : 0.26) / (1 + 0.15 * sk('m1'));
     bus.emit('hud');
   } else cooldown = 0.12;
 }
@@ -344,6 +369,8 @@ function tileInfo(t: number): string {
 function enterTractor() {
   s.inTractor = true;
   tractor.headYaw = 0;
+  camOrbit = 0; camSnap = true;
+  document.body.classList.add('inTractor');
   player.pitch = -0.25;
   player.showTool(false);
   sfx.door();
@@ -357,10 +384,12 @@ let seenTractorTip = false;
 
 function exitTractor() {
   s.inTractor = false;
+  document.body.classList.remove('inTractor');
   const p = tractor.group.localToWorld(new THREE.Vector3(-2.4, 0, 0.6));
   player.pos.set(p.x, 0, p.z);
   resolve(player.pos, 0.4);
-  player.yaw = tractor.yaw + tractor.headYaw;
+  player.yaw = s.tpCam ? tractor.yaw : tractor.yaw + tractor.headYaw;
+  player.pitch = -0.3;
   player.showTool(true);
   sfx.door();
   engine(false);
@@ -415,7 +444,7 @@ bus.on('level', (l: number) => {
   ui.invalidateBars();
   if (offline) return;
   const unlocks = CROPS.filter((c) => c.level === l).map((c) => `${c.icon} ${c.name}`);
-  ui.banner(`⭐ Nível ${l}!`, `+${fmt(reward)}${unlocks.length ? ' · Desbloqueado: ' + unlocks.join(', ') : ' · Novas melhorias na loja'}`);
+  ui.banner(`⭐ Nível ${l}!`, `+${fmt(reward)} · +1 ponto de habilidade ⭐${unlocks.length ? ' · Desbloqueado: ' + unlocks.join(', ') : ' · Novas melhorias na loja'}`);
   sfx.level();
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
@@ -452,6 +481,12 @@ holdButton(document.getElementById('btnSprint')!, (v) => { if (v) { input.sprint
 
 function handleKeys() {
   for (let i = 0; i < 5; i++) if (consume('Digit' + (i + 1))) selectTool(i);
+  if (s.inTractor && s.tpCam) {
+    if (consume('WheelDown')) camDist = Math.min(20, camDist + 1.2);
+    if (consume('WheelUp')) camDist = Math.max(6, camDist - 1.2);
+  }
+  if (consume('KeyV')) toggleCam();
+  if (consume('KeyK')) ui.togglePanel('skills');
   if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : lv('multi') ? 5 : 4));
   if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : lv('multi') ? 5 : 4; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
   if (consume('KeyC')) {
@@ -496,6 +531,8 @@ document.getElementById('playBtn')!.addEventListener('click', () => {
 let last = performance.now();
 let hudT = 0, goalT = 0, saveT = 0, sparkleT = 0, clockT = 0, smokeT = 0, hintT = 20, tractorSfxT = 0;
 let wasRaining = false, prevAction = false;
+let camOrbit = 0, camPitch = 0.42, camDist = 11, lastLook = -10, camSnap = true;
+const camWant = new THREE.Vector3(), camLook = new THREE.Vector3();
 const lookTarget = new THREE.Vector3(0, 0, -28);
 
 function frame(now: number) {
@@ -509,23 +546,41 @@ function frame(now: number) {
     simStep(dt, {
       robotHarvest: (t) => world.droneTo(t),
       truck: (g) => { ui.toast(`🚚 O caminhão vendeu a colheita: +${fmt(g)}`, 'good'); sfx.coin(); },
+      interest: (g) => { ui.toast(`🏦 Juros recebidos: +${fmt(g)}`, 'good'); },
     });
     s.dayTime = (s.clock / DAY + 0.06) % 1;
     handleKeys();
     const [mx, my] = input.enabled ? moveVec() : [0, 0];
     if (input.enabled) {
       if (s.inTractor) {
-        tractor.headYaw = Math.max(-2.2, Math.min(2.2, tractor.headYaw - input.lookX));
-        player.pitch = Math.max(-1.3, Math.min(1.0, player.pitch - input.lookY));
+        if (s.tpCam) {
+          camOrbit -= input.lookX * 1.4;
+          camPitch = Math.max(0.06, Math.min(1.25, camPitch + input.lookY));
+          if (input.lookX || input.lookY) lastLook = realTime;
+        } else {
+          tractor.headYaw = Math.max(-2.2, Math.min(2.2, tractor.headYaw - input.lookX));
+          player.pitch = Math.max(-1.3, Math.min(1.0, player.pitch - input.lookY));
+        }
       } else player.look(input.lookX, input.lookY);
     }
     input.lookX = input.lookY = 0;
 
     if (s.inTractor) {
-      tractor.update(dt, my, mx, tractorSpeed());
+      tractor.update(dt, my, mx, tractorSpeed(), sk('m4') > 0);
       const seat = tractor.seatWorld();
-      camera.position.copy(seat);
-      camera.rotation.set(player.pitch, tractor.yaw + tractor.headYaw, 0);
+      if (s.tpCam) {
+        camOrbit = Math.atan2(Math.sin(camOrbit), Math.cos(camOrbit));
+        if (realTime - lastLook > 1.6 && Math.abs(tractor.speed) > 1) camOrbit *= Math.exp(-dt * 1.8);
+        const tpos = tractor.group.position;
+        const ang = tractor.yaw + camOrbit;
+        camWant.set(tpos.x + Math.sin(ang) * camDist * Math.cos(camPitch), 1.2 + Math.sin(camPitch) * camDist, tpos.z + Math.cos(ang) * camDist * Math.cos(camPitch));
+        if (camSnap) { camera.position.copy(camWant); camSnap = false; } else camera.position.lerp(camWant, 1 - Math.exp(-dt * 9));
+        camLook.set(tpos.x - Math.sin(tractor.yaw) * 2.5, 1.3, tpos.z - Math.cos(tractor.yaw) * 2.5);
+        camera.lookAt(camLook);
+      } else {
+        camera.position.copy(seat);
+        camera.rotation.set(player.pitch, tractor.yaw + tractor.headYaw, 0);
+      }
       player.pos.set(seat.x, 0, seat.z);
       engine(true, tractor.speed / tractorSpeed());
       const act = input.action && input.enabled;
@@ -549,6 +604,7 @@ function frame(now: number) {
       const sp = walkSpeed() * (input.sprint ? 1.6 : 1);
       player.update(dt, mx, my, sp);
       cooldown -= dt;
+      if (sk('m5') && s.can < canCap()) { canAcc += dt * 0.6; if (canAcc >= 1) { canAcc -= 1; s.can++; hudDirty = true; } }
       if (input.action && input.enabled && cooldown <= 0) useHand();
       const t0 = targetTile();
       if (t0 >= 0) {
@@ -592,6 +648,7 @@ function frame(now: number) {
   }
 
   view.update(dt);
+  life.update(dt, realTime, camera.position);
   world.update(dt, camera.position, realTime);
   fx.update(dt);
 
@@ -617,4 +674,4 @@ window.addEventListener('pagehide', doSave);
 window.addEventListener('beforeunload', doSave);
 
 // debug para testes
-(window as any).__tv = { game, farm, player, tractor, enterTractor, buyUpgrade, sim: runSim, earn };
+(window as any).__tv = { game, farm, player, tractor, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };

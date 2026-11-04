@@ -126,13 +126,30 @@ export class Tractor {
     this.group.rotation.y = yaw;
   }
 
-  update(dt: number, throttle: number, steer: number, maxSpeed: number) {
+  update(dt: number, throttle: number, steer: number, maxSpeed: number, gps = false) {
     const target = throttle * maxSpeed * (throttle < 0 ? 0.5 : 1);
     const acc = Math.abs(target) > Math.abs(this.speed) ? 5 : 8;
     this.speed += Math.sign(target - this.speed) * Math.min(Math.abs(target - this.speed), acc * dt);
     this.steer += (steer - this.steer) * Math.min(1, dt * 6);
-    this.yaw -= this.steer * this.speed * 0.28 * dt;
+    this.yaw -= this.steer * Math.sign(this.speed) * Math.min(Math.abs(this.speed), 4) * 0.42 * dt;
     const p = this.group.position;
+    // Assistência: alinha às fileiras quando não está virando
+    if (Math.abs(steer) < 0.12 && Math.abs(this.speed) > 0.6) {
+      const q = Math.PI / 2;
+      const target = Math.round(this.yaw / q) * q;
+      const diff = target - this.yaw;
+      const thr = gps ? 0.7 : 0.22;
+      if (Math.abs(diff) < thr) {
+        this.yaw += diff * Math.min(1, dt * (gps ? 4 : 2.2));
+        if (gps && Math.abs(diff) < 0.08) {
+          // centraliza nos canteiros (centros em coordenadas ímpares)
+          const alongZ = Math.abs(Math.sin(target)) < 0.5;
+          const odd = (v: number) => Math.round((v - 1) / 2) * 2 + 1;
+          const k = Math.min(1, dt * 2.5);
+          if (alongZ) p.x += (odd(p.x) - p.x) * k; else p.z += (odd(p.z) - p.z) * k;
+        }
+      }
+    }
     p.x += -Math.sin(this.yaw) * this.speed * dt;
     p.z += -Math.cos(this.yaw) * this.speed * dt;
     if (resolve(p, 1.9)) this.speed *= 0.6;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { part, merge, cone, cyl, ico, box, rng } from './gfx';
+import { part, merge, cone, cyl, ico, box, rng, shade, blades } from './gfx';
 
 type G = THREE.BufferGeometry;
 const v = new THREE.Vector3();
@@ -101,19 +101,13 @@ function lavender(): G {
 }
 
 export function buildCropGeometries(): G[] {
-  return [wheat(), corn(), sunflower(), pumpkin(), strawberry(), lavender()];
+  return [shade(wheat(), 0.5), shade(corn(), 0.45), shade(sunflower(), 0.5), shade(pumpkin(), 0.6), shade(strawberry(), 0.6), shade(lavender(), 0.5)];
 }
 
 export function grassTuft(): G {
-  const r = rng(77); const P: G[] = [];
-  const cols = [0xd6f0b8, 0xc4e3a0, 0xe2f2c8, 0xb8d890];
-  for (let k = 0; k < 9; k++) {
-    const x = (r() - 0.5) * 1.7, z = (r() - 0.5) * 1.7, h = 0.3 + r() * 0.45;
-    P.push(part(cone(0.07 + r() * 0.05, h, 3), cols[k % 4], [x, h / 2, z], [(r() - 0.5) * 0.5, r() * 3, (r() - 0.5) * 0.5]));
-  }
-  // um arbusto seco/flor silvestre
-  P.push(part(ico(0.16, 0), 0xc9d6a0, [(r() - 0.5), 0.12, (r() - 0.5)], [0, 0, 0], [1, 0.7, 1]));
-  return merge(P);
+  const r = rng(77);
+  const g = blades(r, 34, 0.95, 0.28, 0.75, [0xd6f0b8, 0xc4e3a0, 0xe2f2c8, 0xb8d890]);
+  return shade(g, 0.45);
 }
 
 export function soilGeometry(): G {

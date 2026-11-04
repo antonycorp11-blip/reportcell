@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { part, merge, cone, cyl, ico, box, bx, mat, windMat, rng, fbm, heightAt, Sign, prism, dotTexture } from './gfx';
+import { part, merge, cone, cyl, ico, box, bx, mat, windMat, rng, fbm, heightAt, Sign, prism, dotTexture, shade, planarUV, noiseTexture } from './gfx';
+import { GrassField } from './grass';
 import { colliders } from './physics';
 import { PARCELS, owned, setRain, tileX, tileZ, randomRipe, PN, TILE } from './farm';
-import { game, vitality, lv, siloUsed, siloCap, fmt } from './state';
+import { game, vitality, lv, sk, siloUsed, siloCap, fmt } from './state';
 import { isProcessing } from './economy';
 import type { FX } from './fx';
 
@@ -68,6 +69,8 @@ export class World {
   private smokeT = 0;
   private sprayT = 0;
   private fx: FX;
+  private grass: GrassField;
+  private chimT = 0;
   sunDir = new THREE.Vector3();
   night = 0;
 
@@ -125,10 +128,13 @@ export class World {
     for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)) - 0.02);
     gg.computeVertexNormals();
     gg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
-    this.ground = new THREE.Mesh(gg, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    const gtex = noiseTexture('grass');
+    gtex.repeat.set(220, 220);
+    this.ground = new THREE.Mesh(gg, new THREE.MeshLambertMaterial({ vertexColors: true, map: gtex }));
     this.ground.receiveShadow = true;
     scene.add(this.ground);
 
+    this.grass = new GrassField(scene, high);
     this.buildRoads();
     this.buildPond();
     this.buildTrees();
@@ -214,7 +220,8 @@ export class World {
     strip(-46, -20, -38, -16); strip(38, -20, 46, -16);
     const c = new THREE.CircleGeometry(10, 28); c.rotateX(-Math.PI / 2);
     P.push(part(c, 0xb39466, [0, 0.01, 3]));
-    const mesh = new THREE.Mesh(merge(P), new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    const rg = planarUV(merge(P), 5);
+    const mesh = new THREE.Mesh(rg, new THREE.MeshLambertMaterial({ vertexColors: true, map: noiseTexture('dirt'), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     mesh.receiveShadow = true;
     this.scene.add(mesh);
   }
@@ -267,7 +274,7 @@ export class World {
       part(ico(1.4, 0), 0x8cc152, [0, 4.6, 0], [0, 0, 0], [1, 1.4, 1]),
       part(ico(1.0, 0), 0x9dcc5a, [0.5, 5.6, 0.2]),
     ];
-    const geos = [merge(pine), merge(round), merge(birch)];
+    const geos = [shade(merge(pine), 0.5), shade(merge(round), 0.5), shade(merge(birch), 0.55)];
     const r = rng(42);
     const spots: { x: number; z: number; type: number }[] = [];
     const fixed: [number, number, number][] = [[-27, 4, 1], [-25, 20, 1], [-8, 24, 2], [8, 26, 1], [30, 18, 1], [33, 9, 2], [-29, 12, 2], [-12, 28, 0], [16, 28, 0], [-48, -4, 1], [48, -2, 1], [-50, -40, 0], [50, -44, 0], [-52, -70, 1], [52, -66, 2]];
@@ -612,6 +619,7 @@ export class World {
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     });
     this.flowers.count = Math.floor(this.flowerMax * (0.04 + 0.96 * vit));
+    this.grass.setColor(new THREE.Color(0xc9bd6a).lerp(new THREE.Color(0x7ccc52), vit));
   }
 
   refresh() {
@@ -687,11 +695,14 @@ export class World {
     this.weatherT -= dt;
     if (this.weatherT <= 0) {
       if (this.rainTarget > 0) { this.rainTarget = 0; this.weatherT = 150 + Math.random() * 200; }
-      else if (Math.random() < 0.4) { this.rainTarget = 1; this.weatherT = 40 + Math.random() * 50; }
+      else if (Math.random() < (sk('a5') ? 0.65 : 0.4)) { this.rainTarget = 1; this.weatherT = 40 + Math.random() * 50; }
       else this.weatherT = 90 + Math.random() * 120;
     }
     this.rainF += (this.rainTarget - this.rainF) * Math.min(1, dt * 0.4);
-    setRain(this.rainF > 0.3 ? 0.035 * this.rainF : 0);
+    setRain(this.rainF > 0.3 ? 0.035 * this.rainF * (sk('a5') ? 1.5 : 1) : 0);
+    this.grass.update(camPos);
+    this.chimT -= dt;
+    if (this.chimT <= 0) { this.chimT = 0.3; this.fx.spawn(POS.house.x - 3, 8.1, POS.house.z + 2.2, 0xd8d8d8, 1, 0.3, 0.8, -0.35, 3.2); }
     this.rain.visible = this.rainF > 0.02;
     if (this.rain.visible) {
       (this.rain.material as THREE.LineBasicMaterial).opacity = this.rainF * 0.55;

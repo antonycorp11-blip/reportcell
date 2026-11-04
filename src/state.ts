@@ -23,6 +23,8 @@ export interface State {
   tiles: TileSave | null;
   saved: number;
   settings: Settings;
+  skills: Record<string, number>;
+  tpCam: boolean;
 }
 
 export function newState(legacy = 0, prestiges = 0, settings?: Settings): State {
@@ -36,6 +38,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     tx: 10, tz: -2, tyaw: 0, inTractor: false,
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
+    skills: {}, tpCam: true,
   };
 }
 
@@ -48,17 +51,18 @@ export const bus = {
 
 export const game = { s: newState() };
 export const lv = (id: string) => game.s.up[id] || 0;
+export const sk = (id: string) => game.s.skills[id] || 0;
 
 export const xpNeed = (l: number) => Math.floor(40 * Math.pow(1.45, l - 1));
-export const growthMult = () => (1 + 0.12 * lv('growth')) * (1 + 0.05 * game.s.legacy);
-export const yieldMult = () => 1 + 0.15 * lv('yield');
-export const sellMult = () => (1 + 0.06 * lv('price')) * (1 + 0.1 * game.s.legacy);
-export const siloCap = () => 80 * (1 + lv('silo'));
+export const growthMult = () => (1 + 0.12 * lv('growth')) * (1 + 0.05 * game.s.legacy) * (1 + 0.08 * sk('a1'));
+export const yieldMult = () => 1 + 0.15 * lv('yield') + 0.1 * sk('a3');
+export const sellMult = () => (1 + 0.06 * lv('price')) * (1 + 0.1 * game.s.legacy) * (1 + 0.05 * sk('c1')) * (sk('c6') ? 1.15 : 1);
+export const siloCap = () => Math.round(80 * (1 + lv('silo')) * (1 + 0.25 * sk('c3')));
 export const siloUsed = () => { let n = 0; for (const k in game.s.inv) n += game.s.inv[k]; return n; };
 export const canCap = () => 12 + 12 * lv('can');
-export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots'));
-export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine'));
-export const implWidth = () => 1 + 2 * lv('width');
+export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots')) * (1 + 0.08 * sk('m2'));
+export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine')) * (1 + 0.1 * sk('m3'));
+export const implWidth = () => 1 + 2 * lv('width') + 2 * sk('m6');
 export const legacyGain = (s: State) => Math.floor(Math.sqrt(s.totalEarned / 2000));
 
 export function era(s: State): number {
@@ -126,7 +130,7 @@ export function load(): State | null {
     if (!raw) return null;
     const d = JSON.parse(raw);
     const base = newState();
-    return { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings } };
+    return { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings }, skills: { ...(d.skills || {}) } };
   } catch { return null; }
 }
 

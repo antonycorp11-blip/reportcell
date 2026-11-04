@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CROPS } from './data';
-import { game, bus, growthMult, yieldMult, siloCap, siloUsed, lv, addXp, vitality, type TileSave } from './state';
+import { game, bus, growthMult, yieldMult, siloCap, siloUsed, lv, sk, addXp, vitality, type TileSave } from './state';
 import { windMat, vcMat } from './gfx';
 import { buildCropGeometries, grassTuft, soilGeometry, frameGeometry } from './crops';
 
@@ -111,7 +111,7 @@ export function water(t: number): boolean {
 
 export const isRipe = (t: number) => t >= 0 && T.s[t] === 2 && T.g[t] >= 1;
 
-export type HarvestRes = { c: number; units: number; rot: boolean } | 'full' | null;
+export type HarvestRes = { c: number; units: number; rot: boolean; gold: boolean } | 'full' | null;
 export function harvest(t: number, xpMult = 1): HarvestRes {
   if (!isRipe(t)) return null;
   const free = siloCap() - siloUsed();
@@ -120,24 +120,27 @@ export function harvest(t: number, xpMult = 1): HarvestRes {
   const C = CROPS[c];
   const raw = yieldMult() * T.f[t];
   let units = Math.floor(raw) + (Math.random() < raw - Math.floor(raw) ? 1 : 0);
+  const gold = sk('a6') > 0 && Math.random() < 0.06;
+  if (gold) units *= 5;
   units = Math.max(1, Math.min(units, free));
   const inv = game.s.inv;
   inv[C.id] = (inv[C.id] || 0) + units;
   const last = T.l[t];
   const rot = last >= 0 && last !== c;
-  if (last === c) T.f[t] = Math.max(0.6, T.f[t] - 0.08);
-  else if (rot) T.f[t] = Math.min(1.6, T.f[t] + 0.1);
+  const m4 = sk('a4') > 0;
+  if (last === c) T.f[t] = Math.max(0.6, T.f[t] - (m4 ? 0.04 : 0.08));
+  else if (rot) T.f[t] = Math.min(m4 ? 1.8 : 1.6, T.f[t] + (m4 ? 0.2 : 0.1));
   T.l[t] = c; T.s[t] = 3; T.g[t] = 0; T.c[t] = -1; T.w[t] *= 0.6;
   game.s.stats.harvested++;
   addXp(Math.max(1, Math.round(C.xp * xpMult)));
   dirty = true;
-  return { c, units, rot };
+  return { c, units, rot, gold };
 }
 
 /** Simulação do campo (crescimento e água). */
 export function step(dt: number) {
   const gm = growthMult();
-  const drain = 0.011 / (1 + 0.15 * lv('retain'));
+  const drain = 0.011 / (1 + 0.15 * lv('retain')) / (1 + 0.12 * sk('a2'));
   const spr = lv('sprinkler') * 0.012;
   const delta = (spr + rain - drain) * dt;
   for (let t = 0; t < N; t++) {
@@ -202,7 +205,7 @@ export class FarmView {
   constructor(scene: THREE.Scene, high: boolean) {
     this.soil = new THREE.InstancedMesh(soilGeometry(), vcMat, N);
     this.soil.receiveShadow = true;
-    this.grass = new THREE.InstancedMesh(grassTuft(), windMat(0.12, { side: THREE.DoubleSide }), N);
+    this.grass = new THREE.InstancedMesh(grassTuft(), windMat(0.12, { side: THREE.DoubleSide, flatShading: false }), N);
     this.grass.receiveShadow = true;
     const cropMat = windMat(0.05, { side: THREE.DoubleSide });
     this.crops = buildCropGeometries().map((g) => {
