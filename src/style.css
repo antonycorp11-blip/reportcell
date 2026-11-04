@@ -480,3 +480,21 @@ body.warn #hud #phase { background: rgba(70, 10, 10, 0.85); border-color: #ff5a3
 #bigCount.show { animation: bigc 0.9s ease-out forwards; }
 @keyframes bigc { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.8); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); } }
 @media (max-height: 400px) { #bigCount { font-size: 6em; } #hud #clockTxt .cd { font-size: 1.3em; } }
+
+/* =================== recursos, espólios e nota =================== */
+.svgi { width: 1.2em; height: 1.2em; vertical-align: -0.22em; }
+#resRow { display: flex; gap: 4px; flex-wrap: wrap; pointer-events: auto; }
+#resRow .rc { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px 2px 4px; border-radius: 99px; background: var(--gl); border: 1px solid var(--gl2); color: var(--c); font-size: 0.72em; }
+#resRow .rc b { color: #fff; font-variant-numeric: tabular-nums; }
+.crop .wcost { font-style: normal; font-size: 0.5em; color: #6a5030; display: flex; gap: 2px; align-items: center; white-space: nowrap; }
+.crop .wcost .svgi { width: 1.1em; height: 1.1em; }
+.grade { display: flex; align-items: center; gap: 0.9em; background: #fff; border-radius: 16px; padding: 0.7em; }
+.grade .gl { flex: none; width: 2.2em; height: 2.2em; border-radius: 50%; display: grid; place-items: center; font-size: 2.2em; font-weight: 700; color: #fff; background: radial-gradient(circle at 35% 30%, #fff8, var(--c) 60%); box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--c), 0 6px 18px rgba(0,0,0,0.25); text-shadow: 0 2px 0 rgba(0,0,0,0.25); animation: popIn 0.5s; }
+.grade .gi p { margin: 0.2em 0; font-size: 0.85em; color: var(--ink2); }
+.grade .gi .gs { font-size: 0.75em; }
+.loot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.lootc { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0.55em 0.3em; border-radius: 14px; background: #fff; color: var(--c); box-shadow: 0 2px 0 rgba(60,40,15,0.12); }
+.lootc .svgi { width: 2em; height: 2em; }
+.lootc b { color: var(--ink); font-size: 1.15em; }
+.lootc small { color: var(--ink2); font-size: 0.68em; text-align: center; }
+.rew { text-align: center; margin: 0.2em 0; }

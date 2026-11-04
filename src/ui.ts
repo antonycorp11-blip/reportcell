@@ -6,6 +6,7 @@ import { PARCELS, owned, isNextParcel } from './farm';
 import { parcelPrice, parcelLevel } from './world';
 import { NODES, NMAP, BRANCHES, freePoints, lockReason, has, available, type SNode } from './skills';
 import { WALLS } from './walls';
+import { icon, RES } from './icons';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -20,7 +21,8 @@ export interface Handlers {
   aerial(): void; zoom(d: number): void;
 }
 let H: Handlers;
-let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' | 'hub' = '';
+let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' | 'hub' | 'grade' = '';
+export const blocking = () => panel === 'grade' || panel === 'over' || panel === 'welcome';
 let selSkill = 'root';
 let shopTab: Tab | 'land' | 'legacy' = 'def';
 let welcomeHtml = '';
@@ -83,7 +85,7 @@ export function initUI(h: Handlers) {
 export const isPanelOpen = () => panel !== '';
 
 export function openPanel(p: typeof panel, html = '') {
-  if (p === 'welcome' || p === 'over') welcomeHtml = html;
+  if (p === 'welcome' || p === 'over' || p === 'grade') welcomeHtml = html;
   panel = p;
   $('panelWrap').classList.remove('hidden');
   H.open();
@@ -183,6 +185,9 @@ function renderPanel() {
       <button data-a="go" data-v="market"><span>📈</span><b>Mercado</b><small>Silo ${used}/${cap}</small></button>
       <button data-a="go" data-v="menu"><span>⚙️</span><b>Ajustes</b><small>Som, gráficos, dificuldade</small></button>
     </div>`;
+  } else if (panel === 'grade') {
+    head = '🌅 Amanhecer';
+    content = welcomeHtml;
   } else if (panel === 'over') {
     head = '💀 A fazenda caiu';
     content = welcomeHtml;
@@ -319,6 +324,9 @@ export function updateHud() {
   }
   ($('canBar') as HTMLElement).style.width = (s.can / canCap()) * 100 + '%';
   $('canTxt').textContent = `${s.can}/${canCap()}`;
+  const rr = $('resRow');
+  const rk = RES.map((r) => s.res[r.id] || 0).join(',');
+  if (rr.dataset.k !== rk) { rr.dataset.k = rk; rr.innerHTML = RES.map((r) => `<span class="rc" style="--c:${r.color}" title="${r.name}">${icon(r.icon)}<b>${s.res[r.id] || 0}</b></span>`).join(''); }
   const cn = document.getElementById('canNum');
   if (cn) { cn.textContent = String(s.can); cn.classList.toggle('empty', s.can === 0); }
   const used = siloUsed(), cap = siloCap();
@@ -417,7 +425,7 @@ export function renderCropbar(inTractor: boolean, wallSel = lastWall) {
   if (building) {
     cb.innerHTML = WALLS.map((w, i) => {
       const lock = s.level < w.level;
-      return `<button class="crop wide ${i === wallSel ? 'on' : ''} ${lock ? 'locked' : ''}" data-i="${i}" ${lock ? 'disabled' : ''}><span>${lock ? '🔒' : w.icon}</span><small>${lock ? 'Nv ' + w.level : w.name + ' $' + w.cost}</small></button>`;
+      return `<button class="crop wide ${i === wallSel ? 'on' : ''} ${lock ? 'locked' : ''}" data-i="${i}" ${lock ? 'disabled' : ''}><span>${lock ? '🔒' : w.icon}</span><small>${lock ? 'Nv ' + w.level : w.name}</small><em class="wcost">${Object.entries(w.cost).map(([k, v]) => `${v}${icon(k)}`).join(' ')}</em></button>`;
     }).join('');
     cb.querySelectorAll('button').forEach((b) => tap(b as HTMLElement, () => H.wall(Number((b as HTMLElement).dataset.i))));
     return;

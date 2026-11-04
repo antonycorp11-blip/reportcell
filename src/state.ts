@@ -31,6 +31,7 @@ export interface State {
   nights: number;
   baseHp: number;
   walls: { type: number; x: number; z: number; rot: number; hp: number }[];
+  res: Record<string, number>;
 }
 
 export const DAY_LEN = 240;
@@ -50,7 +51,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
     skills: {}, tpCam: true,
-    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 400, walls: [],
+    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 400, walls: [], res: { wood: 12, metal: 3, mseed: 0, food: 2 },
   };
 }
 
@@ -148,7 +149,7 @@ export function load(): State | null {
     if (!raw) return null;
     const d = JSON.parse(raw);
     const base = newState();
-    return { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings }, skills: { ...(d.skills || {}) } };
+    return { ...base, ...d, stats: { ...base.stats, ...d.stats }, settings: { ...base.settings, ...d.settings }, skills: { ...(d.skills || {}) }, res: { ...base.res, ...(d.res || {}) } };
   } catch { return null; }
 }
 

@@ -3,11 +3,11 @@ import { bx, mat, cyl, cone, ico, box, addOutlines } from './gfx';
 import { game } from './state';
 import type { FX } from './fx';
 
-export interface WallDef { name: string; icon: string; cost: number; hp: number; desc: string; level: number }
+export interface WallDef { name: string; icon: string; cost: Record<string, number>; hp: number; desc: string; level: number }
 export const WALLS: WallDef[] = [
-  { name: 'Cerca', icon: '🪵', cost: 25, hp: 260, desc: 'Bloqueia a passagem — os zumbis param para quebrar', level: 1 },
-  { name: 'Espinhos', icon: '🌵', cost: 45, hp: 160, desc: 'Fere e deixa lento quem passa por cima', level: 2 },
-  { name: 'Isca', icon: '🔔', cost: 90, hp: 380, desc: 'Espantalho barulhento: atrai zumbis num raio de 9 m', level: 4 },
+  { name: 'Cerca', icon: '🪵', cost: { wood: 3 }, hp: 260, desc: 'Bloqueia a passagem — os zumbis param para quebrar', level: 1 },
+  { name: 'Espinhos', icon: '🌵', cost: { wood: 2, metal: 1 }, hp: 160, desc: 'Fere e deixa lento quem passa por cima', level: 2 },
+  { name: 'Isca', icon: '🔔', cost: { wood: 4, metal: 2 }, hp: 380, desc: 'Espantalho barulhento: atrai zumbis num raio de 9 m', level: 4 },
 ];
 
 export interface Wall { type: number; x: number; z: number; rot: number; hp: number; g: THREE.Group; bar: THREE.Mesh; hitT: number }

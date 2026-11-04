@@ -23,6 +23,7 @@ import { Creatures } from './creatures';
 import { faceMats } from './zmodels';
 import { Minimap } from './minimap';
 import { Post } from './post';
+import { icon, RES } from './icons';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
@@ -258,7 +259,7 @@ ui.initUI({
   aerial: toggleAerial,
   zoom: (d: number) => { aer.th = Math.max(22, Math.min(140, aer.th * (d > 0 ? 1.25 : 0.8))); },
   tool: selectTool,
-  wall(i) { buildType = i; if (aerial) ui.toast(`Toque no mapa para construir · ${WALLS[i].icon} ${WALLS[i].name} ${fmt(WALLS[i].cost)}`); sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${fmt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
+  wall(i) { buildType = i; if (aerial) ui.toast(`Toque no mapa para construir · ${WALLS[i].icon} ${WALLS[i].name} · ${resTxt(WALLS[i].cost)}`); sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${resTxt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
   startNight: () => startNight(),
   restart: () => restart(),
@@ -330,14 +331,14 @@ function aerialTap(sx: number, sy: number) {
   const t = -camera.position.y / d.y;
   const x = Math.round(camera.position.x + d.x * t), z = Math.round(camera.position.z + d.z * t);
   const other = walls.at(x, z, 1.6);
-  if (other) { buildPt.set(other.x, 0, other.z); const W0 = WALLS[other.type]; const cost = Math.ceil(W0.cost * 0.5 * (1 - other.hp / W0.hp)); if (other.hp >= W0.hp) { ui.toast('🧱 Já está inteira'); return; } if (!spend(cost)) { ui.toast(`💸 Reparo custa ${fmt(cost)}`, 'warn'); return; } other.hp = W0.hp; sfx.plow(); ui.toast(`🔨 Reparado por ${fmt(cost)}`); return; }
+  if (other) { buildPt.set(other.x, 0, other.z); const W0 = WALLS[other.type]; if (other.hp >= W0.hp) { ui.toast('🧱 Já está inteira'); return; } if (!payRes({ wood: 1 })) return; other.hp = W0.hp; sfx.plow(); ui.toast('🔨 Reparado · 1 madeira'); return; }
   let blocked = false;
   for (const b of colliders.boxes) { if (b.on && !b.on()) continue; if (x > b.x1 - 1 && x < b.x2 + 1 && z > b.z1 - 1 && z < b.z2 + 1) blocked = true; }
   for (const c of colliders.circles) { if (c.on && !c.on()) continue; if ((x - c.x) ** 2 + (z - c.z) ** 2 < (c.r + 1) ** 2) blocked = true; }
   if (blocked || Math.abs(x) > 92 || z < -95 || z > 60) { ui.toast('🚫 Não dá para construir aqui', 'warn'); sfx.error(); return; }
   const W = WALLS[buildType];
   if (s.level < W.level) { ui.toast(`🔒 ${W.name} requer nível ${W.level}`, 'warn'); return; }
-  if (!spend(W.cost)) { ui.toast(`💸 ${W.name} custa ${fmt(W.cost)}`, 'warn'); sfx.error(); return; }
+  if (!payRes(W.cost)) return;
   // vira de frente para a rota mais próxima
   let best = Infinity, rot = 0;
   for (const id in LMAP) { const P = LMAP[id].pts; for (let i = 0; i < P.length - 1; i++) { const [ax, az] = P[i], [bx, bz] = P[i + 1]; const vx = bx - ax, vz = bz - az; const L = vx * vx + vz * vz; const u = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / L)); const dd = (ax + vx * u - x) ** 2 + (az + vz * u - z) ** 2; if (dd < best) { best = dd; rot = -Math.atan2(vx, -vz); } } }
@@ -646,6 +647,7 @@ function startNight() {
   }
   s.phase = 'night';
   const n = s.nights + 1;
+  nightLoot = {};
   spawnQueue = [...plan.list];
   waveTotal = spawnQueue.length;
   nightMod = plan.mod;
@@ -664,13 +666,18 @@ function endNight() {
   s.phase = 'day';
   s.phaseT = dayLen(s.nights + 1);
   s.nights++;
-  const perfect = s.baseHp >= baseAtDusk - 0.5;
-  const reward = Math.round((40 + s.nights * 35) * (nightMod === 'blood' || nightMod === 'double' ? 1.5 : 1) * (perfect ? 1.5 : 1));
+  const lost = Math.max(0, baseAtDusk - s.baseHp) / baseMax();
+  const grade = lost <= 0.001 ? 'S' : lost < 0.15 ? 'A' : lost < 0.4 ? 'B' : 'C';
+  const gm = { S: 2, A: 1.5, B: 1.2, C: 1 }[grade];
+  const perfect = grade === 'S';
+  const reward = Math.round((40 + s.nights * 35) * (nightMod === 'blood' || nightMod === 'double' ? 1.5 : 1) * gm);
   earn(reward);
+  for (const k in nightLoot) s.res[k] = (s.res[k] || 0) + nightLoot[k];
+  ui.openPanel('grade', gradeHtml(grade, lost, reward));
   addXp(10 + s.nights * 5);
   s.baseHp = Math.min(baseMax(), s.baseHp + baseMax() * 0.3);
   playerHp = playerMax();
-  ui.banner(`🌅 Você sobreviveu à noite ${s.nights}!`, `+${fmt(reward)}${perfect ? ' · 🛡️ DEFESA PERFEITA ×1,5' : ''} · veja as rotas da próxima noite`);
+  void perfect;
   nightMod = null; eyeTint();
   laneView.set({}, false);
   planNext();
@@ -683,7 +690,7 @@ function updatePhase(dt: number) {
   if (over) return;
   if (s.phase === 'day') {
     const prevT = s.phaseT;
-    s.phaseT -= dt;
+    if (!ui.blocking()) s.phaseT -= dt;
     world.danger = Math.max(0, Math.min(1, 1 - s.phaseT / 30));
     if (prevT > 30 && s.phaseT <= 30) { ui.banner('🌙 A NOITE ESTÁ CHEGANDO!', '30 segundos — termine de plantar e prepare as defesas'); sfx.siren(); document.body.classList.add('warn'); }
     if (s.phaseT <= 10 && Math.ceil(prevT) !== Math.ceil(s.phaseT) && s.phaseT > 0) { ui.bigCount(Math.ceil(s.phaseT)); sfx.heart(); }
@@ -757,7 +764,23 @@ function hurtBase(d: number) {
   if (s.baseHp <= 0) gameOver();
 }
 
+const LOOT: Record<string, [string, number, number][]> = {
+  walker: [['wood', 0.6, 1], ['metal', 0.15, 1], ['food', 0.08, 1]],
+  runner: [['wood', 0.4, 1], ['mseed', 0.08, 1]],
+  brute: [['wood', 1, 2], ['metal', 0.8, 2], ['food', 0.3, 1]],
+  digger: [['metal', 0.7, 1], ['mseed', 0.25, 1]],
+  crow: [['mseed', 0.3, 1], ['wood', 0.3, 1]],
+  colossus: [['wood', 1, 8], ['metal', 1, 8], ['mseed', 1, 4], ['food', 1, 3]],
+};
+let nightLoot: Record<string, number> = {};
+const LOOT_COL: Record<string, number> = { wood: 0xc98a4a, metal: 0xbfd2e6, mseed: 0x9dff7a, food: 0xffb547 };
+
 function onKill(z: Zombie, by: 'plant' | 'player') {
+  for (const [res, ch, n] of LOOT[z.kind] || []) if (Math.random() < ch) {
+    nightLoot[res] = (nightLoot[res] || 0) + n;
+    const p = z.g.position;
+    fx.spawn(p.x, 1.2, p.z, LOOT_COL[res], 8, 0.6, 5, 9, 1.1);
+  }
   s.stats.kills++;
   earn(Math.round(z.reward * pct('kill')));
   addXp(z.kind === 'colossus' ? 80 : z.kind === 'brute' ? 6 : 2);
@@ -851,20 +874,39 @@ function build() {
   if (other) {
     const max = WALLS[other.type].hp;
     if (other.hp >= max) { ui.toast('🧱 Já está inteira'); return; }
-    const cost = Math.ceil(WALLS[other.type].cost * 0.5 * (1 - other.hp / max));
-    if (!spend(cost)) { ui.toast(`💸 Reparo custa ${fmt(cost)}`, 'warn'); sfx.error(); return; }
+    if (!payRes({ wood: 1 })) return;
     other.hp = max; sfx.plow(); player.use();
-    ui.toast(`🔨 Reparado por ${fmt(cost)}`);
+    ui.toast('🔨 Reparado · 1 madeira');
     return;
   }
   const W = WALLS[buildType];
   if (s.level < W.level) { ui.toast(`🔒 ${W.name} requer nível ${W.level}`, 'warn'); return; }
   if (!buildOk) { ui.toast('🚫 Não dá para construir aqui', 'warn'); sfx.error(); return; }
-  if (!spend(W.cost)) { ui.toast(`💸 ${W.name} custa ${fmt(W.cost)}`, 'warn'); sfx.error(); return; }
+  if (!payRes(W.cost)) return;
   walls.add(buildType, buildPt.x, buildPt.z, buildRot);
   player.use(); sfx.plow();
   fx.spawn(buildPt.x, 0.5, buildPt.z, 0x9a6a3c, 12, 1.5, 3, 9, 0.7);
   s.stats.plowed += 0;
+}
+
+function gradeHtml(g: string, lost: number, reward: number): string {
+  const col = { S: '#ffd23f', A: '#7dff5a', B: '#4ac8ff', C: '#ff8a5a' }[g];
+  const msg = { S: 'Defesa perfeita! Ninguém se feriu.', A: 'Ótima noite — poucos estragos.', B: 'Foi por pouco… reforce as defesas.', C: 'Noite brutal. Prepare-se melhor!' }[g];
+  const loot = RES.map((r) => `<div class="lootc" style="--c:${r.color}">${icon(r.icon)}<b>+${nightLoot[r.id] || 0}</b><small>${r.name}</small></div>`).join('');
+  return `<div class="grade"><div class="gl" style="--c:${col}">${g}</div><div class="gi"><b>Noite ${s.nights} sobrevivida</b><p>${msg}</p>
+    <p class="gs">Estrago na casa: <b>${Math.round(lost * 100)}%</b> · Zumbis eliminados: <b>${s.stats.kills}</b></p></div></div>
+    <p class="note">Espólios que os zumbis deixaram cair:</p><div class="loot">${loot}</div>
+    <p class="rew">Recompensa: <b>${fmt(reward)}</b> (nota ${g} ×${{ S: 2, A: 1.5, B: 1.2, C: 1 }[g]})</p>
+    <button class="big" data-a="close">☀️ Começar o dia ${s.nights + 1}</button>`;
+}
+
+const RES_NAME: Record<string, string> = { wood: 'madeira', metal: 'metal', mseed: 'semente mutante', food: 'comida' };
+function resTxt(c: Record<string, number>) { return Object.entries(c).map(([k, v]) => `${v} ${RES_NAME[k]}`).join(' + '); }
+function payRes(c: Record<string, number>): boolean {
+  for (const [k, v] of Object.entries(c)) if ((s.res[k] || 0) < v) { ui.toast(`🪵 Falta ${RES_NAME[k]} (precisa de ${resTxt(c)}) — derrote zumbis para conseguir`, 'warn'); sfx.error(); return false; }
+  for (const [k, v] of Object.entries(c)) s.res[k] -= v;
+  hudDirty = true;
+  return true;
 }
 
 function gameOver() {
@@ -1167,4 +1209,4 @@ window.addEventListener('pagehide', doSave);
 window.addEventListener('beforeunload', doSave);
 
 // debug para testes
-(window as any).__tv = { game, farm, player, tractor, horde, walls, defense, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };
+(window as any).__tv = { game, farm, player, tractor, horde, walls, defense, endNight, setLoot: (l: Record<string, number>) => { nightLoot = l; }, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };
