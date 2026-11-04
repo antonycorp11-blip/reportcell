@@ -23,6 +23,8 @@ import { Creatures } from './creatures';
 import { faceMats } from './zmodels';
 import { Minimap } from './minimap';
 import { Post } from './post';
+import { House, plankHp, maxPlanks } from './house';
+import { Family, FAMILY, type Who } from './family';
 import { icon, RES } from './icons';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
@@ -70,6 +72,9 @@ life.onUnlock = (name) => { if (playing) { ui.banner('✨ A fazenda evoluiu!', n
 const horde = new Horde(scene, fx);
 const defense = new Defense(scene, horde, fx);
 const laneView = new LaneView(scene);
+const house = new House(scene, fx, horde);
+const family = new Family(scene, fx);
+house.onBreak = (e) => { ui.toast(`🚨 ${e.name} arrombada! Pregue tábuas (1 madeira cada)`, 'warn'); sfx.scream(); };
 const creatures = new Creatures(scene, fx, high);
 creatures.aim = (t) => (defense.hasAim[t] ? { x: defense.aimX[t], z: defense.aimZ[t] } : null);
 creatures.charge = defense.charge;
@@ -112,6 +117,9 @@ function applyState() {
   if (s.phase === 'night') { s.phase = 'day'; s.phaseT = 20; }
   horde.clear(); defense.reset();
   walls.load(s.walls);
+  if (!s.entries || s.entries.length !== house.entries.length) house.repairAll();
+  house.refresh();
+  family.comeOut();
   recalcStats();
   planNext();
   player.setTool(s.tool);
@@ -262,6 +270,7 @@ ui.initUI({
   wall(i) { buildType = i; if (aerial) ui.toast(`Toque no mapa para construir · ${WALLS[i].icon} ${WALLS[i].name} · ${resTxt(WALLS[i].cost)}`); sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${resTxt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
   startNight: () => startNight(),
+  npc: (v: string) => npcAction(v),
   restart: () => restart(),
   open() { input.enabled = false; input.action = false; if (document.pointerLockElement) document.exitPointerLock(); },
   close() { input.enabled = true; if (!isTouch && playing) canvas.requestPointerLock?.(); },
@@ -543,6 +552,16 @@ const inters: Inter[] = [
   { pos: () => millSignPos, r: 3.5, label: () => (lv('mill') ? null : `Construir moinho ${fmt(upCost(UPMAP.mill, 0))}`), act: () => buyUpgrade('mill') },
   { pos: () => pressSignPos, r: 3.5, label: () => (lv('press') ? null : `Construir prensa ${fmt(upCost(UPMAP.press, 0))}`), act: () => buyUpgrade('press') },
   { pos: () => houseDoor, r: 3.2, label: () => (s.phase === 'day' && !over ? 'Começar a noite 🌙' : null), act: () => startNight() },
+  ...house.entries.map((e, i): Inter => {
+    const sp = house.spot(i);
+    const pos = new THREE.Vector3(sp.x + e.nx * 0.6, 0, sp.z + e.nz * 0.6);
+    return { pos: () => pos, r: 2.4, label: () => { const n = Math.ceil(house.hp(i) / plankHp() - 0.001), m = maxPlanks(e); return n < m ? `🔨 Pregar tábua ${n}/${m} · 1 madeira` : null; }, act: () => { if (!payRes({ wood: 1 })) return; house.repair(i); player.use(); sfx.plow(); } };
+  }),
+  ...(['ana', 'bia', 'leo', 'ze'] as Who[]).map((who): Inter => ({
+    pos: () => family.get(who).g.position, r: 2.6,
+    label: () => (family.get(who).state === 'day' || family.get(who).state === 'out' ? `💬 Falar com ${FAMILY[who].name}` : null),
+    act: () => openNpc(who),
+  })),
   ...PARCELS.map((p): Inter => {
     const pos = parcelSignPos(p.id);
     return { pos: () => pos, r: 3.2, label: () => (farm.isNextParcel(p.id) ? `🏗️ Construir expansão ${fmt(parcelPrice(s.parcels.length))}` : null), act: () => buyParcel(p.id) };
@@ -648,6 +667,7 @@ function startNight() {
   s.phase = 'night';
   const n = s.nights + 1;
   nightLoot = {};
+  family.runHome();
   spawnQueue = [...plan.list];
   waveTotal = spawnQueue.length;
   nightMod = plan.mod;
@@ -663,6 +683,8 @@ function startNight() {
 }
 
 function endNight() {
+  family.comeOut();
+  s.buffs = {};
   s.phase = 'day';
   s.phaseT = dayLen(s.nights + 1);
   s.nights++;
@@ -694,6 +716,7 @@ function updatePhase(dt: number) {
     world.danger = Math.max(0, Math.min(1, 1 - s.phaseT / 30));
     if (prevT > 30 && s.phaseT <= 30) { ui.banner('🌙 A NOITE ESTÁ CHEGANDO!', '30 segundos — termine de plantar e prepare as defesas'); sfx.siren(); document.body.classList.add('warn'); }
     if (s.phaseT <= 10 && Math.ceil(prevT) !== Math.ceil(s.phaseT) && s.phaseT > 0) { ui.bigCount(Math.ceil(s.phaseT)); sfx.heart(); }
+    if (prevT > 12 && s.phaseT <= 12) { family.runHome(); ui.toast('🏃 A família está correndo para casa!'); }
     if (s.phaseT <= 0) startNight();
     const p = 1 - Math.max(0, s.phaseT) / dayLen(s.nights);
     visDay += (0.1 + 0.58 * p - visDay) * Math.min(1, dt * 1.5);
@@ -728,7 +751,7 @@ function updatePhase(dt: number) {
       playerHp = playerMax();
       ui.toast('❤️ Você se recuperou na casa');
     }
-  } else if (hurtT > 4 && playerHp < playerMax()) playerHp = Math.min(playerMax(), playerHp + dt * 8 * (1 + 0.5 * lv('medkit')));
+  } else if (hurtT > 4 && playerHp < playerMax()) playerHp = Math.min(playerMax(), playerHp + dt * 8 * (1 + 0.5 * lv('medkit')) * (s.buffs.bread ? 3 : 1));
   if (s.phase === 'night' && sk('d4') && !over) s.baseHp = Math.min(baseMax(), s.baseHp + 3 * dt);
   if (s.phase === 'night' && s.baseHp < baseMax() * 0.5 && Math.random() < dt * 4) fx.spawn(POS.house.x + (Math.random() - 0.5) * 8, 4 + Math.random() * 2, POS.house.z + (Math.random() - 0.5) * 6, Math.random() < 0.5 ? 0xff7a2a : 0x555555, 2, 1, 2, -1, 1.5);
 }
@@ -760,7 +783,7 @@ function hurtBase(d: number) {
   d *= diffK()[2];
   s.baseHp -= d;
   baseAlertT -= 1 / 60;
-  if (baseAlertT <= 0) { baseAlertT = 6; ui.toast('🏠 A casa está sendo atacada!', 'warn'); }
+  if (baseAlertT <= 0) { baseAlertT = 5; ui.toast('😱 Zumbis dentro de casa! A família está em perigo!', 'warn'); sfx.scream(); }
   if (s.baseHp <= 0) gameOver();
 }
 
@@ -835,13 +858,13 @@ function attack() {
     if (v.length() > 0.01 && v.normalize().dot(fwd) < 0.35) return;
     if (z.kind === 'crow' && player.pitch < 0.2) return;
     hitAny = true;
-    if (horde.hit(z, 18 * (1 + 0.3 * lv('blade')) * pct('udmg'), { knock: fwd.clone().multiplyScalar(3.5) })) onKill(z, 'player');
+    if (horde.hit(z, 18 * (1 + 0.3 * lv('blade')) * pct('udmg') * (s.buffs.pie ? 1.3 : 1), { knock: fwd.clone().multiplyScalar(3.5) })) onKill(z, 'player');
   });
   if (hitAny) { sfx.whack(); shake = Math.max(shake, 0.08); }
   if (lv('seedgun')) {
     const from = camera.position.clone().addScaledVector(aimDir, 0.8);
     from.y -= 0.2;
-    defense.fireSeed(from, aimTarget(0.3, 30), aimDir.clone(), 9 * (1 + 0.25 * lv('ammo')) * pct('udmg'));
+    defense.fireSeed(from, aimTarget(0.3, 30), aimDir.clone(), 9 * (1 + 0.25 * lv('ammo')) * pct('udmg') * (s.buffs.pie ? 1.3 : 1));
     sfx.shoot(3);
     cooldown = 0.38 / pct('tool');
   } else {
@@ -891,10 +914,10 @@ function build() {
 
 function gradeHtml(g: string, lost: number, reward: number): string {
   const col = { S: '#ffd23f', A: '#7dff5a', B: '#4ac8ff', C: '#ff8a5a' }[g];
-  const msg = { S: 'Defesa perfeita! Ninguém se feriu.', A: 'Ótima noite — poucos estragos.', B: 'Foi por pouco… reforce as defesas.', C: 'Noite brutal. Prepare-se melhor!' }[g];
+  const msg = { S: 'Defesa perfeita! A família dormiu em paz.', A: 'Ótima noite — só uns arranhões.', B: 'Foi por pouco… reforce as janelas.', C: 'Noite brutal. A família quase não aguentou!' }[g];
   const loot = RES.map((r) => `<div class="lootc" style="--c:${r.color}">${icon(r.icon)}<b>+${nightLoot[r.id] || 0}</b><small>${r.name}</small></div>`).join('');
   return `<div class="grade"><div class="gl" style="--c:${col}">${g}</div><div class="gi"><b>Noite ${s.nights} sobrevivida</b><p>${msg}</p>
-    <p class="gs">Estrago na casa: <b>${Math.round(lost * 100)}%</b> · Zumbis eliminados: <b>${s.stats.kills}</b></p></div></div>
+    <p class="gs">Família ferida: <b>${Math.round(lost * 100)}%</b> · Zumbis eliminados: <b>${s.stats.kills}</b></p></div></div>
     <p class="note">Espólios que os zumbis deixaram cair:</p><div class="loot">${loot}</div>
     <p class="rew">Recompensa: <b>${fmt(reward)}</b> (nota ${g} ×${{ S: 2, A: 1.5, B: 1.2, C: 1 }[g]})</p>
     <button class="big" data-a="close">☀️ Começar o dia ${s.nights + 1}</button>`;
@@ -909,6 +932,72 @@ function payRes(c: Record<string, number>): boolean {
   return true;
 }
 
+// ------------------------------------------------------------------ família: conversas e serviços
+const LINES: Record<Who, string[]> = {
+  ana: ['Tem comida no fogão. Ninguém luta de barriga vazia.', 'A chuva verde levou a cidade inteira… mas não vai levar a gente.', 'As crianças estão com medo. Fica perto da casa à noite, tá?', 'Se trouxer milho do campo, faço aquela sopa que te deixa forte.'],
+  bia: ['Pai, as plantas piscaram pra mim de novo!', 'Eu e o Léo regamos tudo que tava com sede!', 'Se me der adubo, as plantas crescem rapidinho.', 'A Lavanda é minha favorita. Ela canta à noite.'],
+  leo: ['Eu vi um zumbi corvo! Era enorme!', 'Quando eu crescer quero ser igual o Milho-Artilheiro. PÁ PÁ PÁ!', 'Regador cheio, missão cumprida!', 'Pai, posso ficar acordado pra ver as plantas lutarem?'],
+  ze: ['Essa terra é teimosa como eu. Por isso ainda está viva.', 'Com metal e madeira eu blindo essa casa inteira.', 'Os agrotóxicos misturados com a chuva… criaram vida nas plantas. Ironia, né?', 'Traga sementes mutantes. Quero tentar umas misturas no laboratório.'],
+};
+const RECIPES: Record<string, { name: string; desc: string; need: Record<string, number>; inv?: Record<string, number>; buff?: string }> = {
+  eat: { name: 'Refeição quente', desc: 'Cura 60 de vida agora', need: { food: 1 } },
+  soup: { name: 'Sopa de milho', desc: '+40 de vida máxima até o amanhecer', need: { food: 1 }, inv: { corn: 4 }, buff: 'soup' },
+  bread: { name: 'Pão de trigo', desc: 'Regenera vida 3× mais rápido esta noite', need: {}, inv: { wheat: 6 }, buff: 'bread' },
+  pie: { name: 'Torta de abóbora', desc: '+30% de dano da sua arma esta noite', need: { food: 1 }, inv: { pumpkin: 2 }, buff: 'pie' },
+  fert: { name: 'Adubo caseiro', desc: 'Plantas crescem +40% mais rápido hoje', need: { food: 1 }, inv: { wheat: 3 }, buff: 'fert' },
+};
+const WORKSHOP: Record<string, { name: string; desc: string; need: Record<string, number>; max: number }> = {
+  plates: { name: 'Chapas de metal', desc: 'Janelas e porta aguentam 2,2× mais', need: { metal: 8, wood: 4 }, max: 1 },
+  porch: { name: 'Armadilha da varanda', desc: 'Estacas ao redor da casa ferem e atrasam zumbis', need: { wood: 10, metal: 3 }, max: 1 },
+  spot: { name: 'Holofote', desc: 'Varre o campo à noite e deixa zumbis lentos', need: { metal: 6, wood: 2 }, max: 1 },
+  turret: { name: 'Torreta do telhado', desc: 'Atira sozinha em zumbis perto da casa (nível 2: +50% dano)', need: { metal: 12, wood: 8 }, max: 2 },
+  kidcans: { name: 'Regadores das crianças', desc: 'Bia e Léo regam quase 2× mais rápido', need: { wood: 4, metal: 1 }, max: 1 },
+};
+let npcWho: Who = 'ana';
+function costHtml(need: Record<string, number>, inv?: Record<string, number>) {
+  const r = Object.entries(need).map(([k, v]) => `<span class="cst ${(s.res[k] || 0) >= v ? '' : 'no'}">${v}${icon(k)}</span>`);
+  const c = Object.entries(inv || {}).map(([k, v]) => `<span class="cst ${(s.inv[k] || 0) >= v ? '' : 'no'}">${v} ${CROPS.find((x) => x.id === k)?.name ?? k}</span>`);
+  return [...r, ...c].join(' ');
+}
+function canPay(need: Record<string, number>, inv?: Record<string, number>) {
+  return Object.entries(need).every(([k, v]) => (s.res[k] || 0) >= v) && Object.entries(inv || {}).every(([k, v]) => (s.inv[k] || 0) >= v);
+}
+function openNpc(who: Who) {
+  npcWho = who;
+  const line = LINES[who][(Math.random() * LINES[who].length) | 0];
+  const opt = (id: string, name: string, desc: string, cost: string, ok: boolean, done = false) =>
+    `<div class="item ${done ? 'maxed' : ''}"><div class="it"><b>${name}</b><p>${desc}</p><p class="costs">${cost}</p></div>${done ? '<div class="done">✔</div>' : `<button class="buy" data-a="npc" data-v="${id}" ${ok ? '' : 'disabled'}>${id.startsWith('w:') ? 'Construir' : 'Fazer'}</button>`}</div>`;
+  let body = '';
+  if (who === 'ana') body = ['eat', 'soup', 'bread', 'pie'].map((k) => { const r = RECIPES[k]; return opt('r:' + k, r.name, r.desc + (r.buff && s.buffs[r.buff] ? ' · <b>ativo</b>' : ''), costHtml(r.need, r.inv), canPay(r.need, r.inv) && !(r.buff && s.buffs[r.buff])); }).join('');
+  if (who === 'bia' || who === 'leo') body = opt('r:fert', RECIPES.fert.name, RECIPES.fert.desc + (s.buffs.fert ? ' · <b>ativo</b>' : ''), costHtml(RECIPES.fert.need, RECIPES.fert.inv), canPay(RECIPES.fert.need, RECIPES.fert.inv) && !s.buffs.fert) + opt('w:kidcans', WORKSHOP.kidcans.name, WORKSHOP.kidcans.desc, costHtml(WORKSHOP.kidcans.need), canPay(WORKSHOP.kidcans.need), lv('kidcans') >= 1);
+  if (who === 'ze') body = '<p class="note">🔧 Oficina — defesas da casa</p>' + ['plates', 'porch', 'spot', 'turret'].map((k) => { const w = WORKSHOP[k]; return opt('w:' + k, w.name + (w.max > 1 ? ` (nv ${lv(k)}/${w.max})` : ''), w.desc, costHtml(w.need), canPay(w.need), lv(k) >= w.max); }).join('')
+    + opt('fix', 'Consertar todas as entradas', 'O Vô prega tábuas em tudo que está quebrado', costHtml({ wood: Math.max(1, missingPlanks()) }), missingPlanks() > 0 && (s.res.wood || 0) >= missingPlanks(), missingPlanks() === 0);
+  ui.openPanel('npc', `<div class="npc"><div class="np ${who}">${icon(who === 'ana' ? 'food' : who === 'ze' ? 'hammer' : 'drop')}</div><div><b>${FAMILY[who].name}</b> <small>${FAMILY[who].role}</small><p class="say">“${line}”</p></div></div>${body}`);
+}
+function missingPlanks() { let n = 0; house.entries.forEach((e, i) => { n += maxPlanks(e) - Math.ceil(house.hp(i) / plankHp() - 0.001); }); return n; }
+function npcAction(v: string) {
+  if (v === 'fix') { const n = missingPlanks(); if (n && payRes({ wood: n })) { house.repairAll(); sfx.buy(); ui.toast(`🔨 Vô Zé consertou ${n} tábuas`, 'good'); } openNpc(npcWho); return; }
+  const [kind, id] = v.split(':');
+  if (kind === 'r') {
+    const r = RECIPES[id];
+    if (!canPay(r.need, r.inv)) { sfx.error(); return; }
+    for (const [k, n] of Object.entries(r.need)) s.res[k] -= n;
+    for (const [k, n] of Object.entries(r.inv || {})) { s.inv[k] -= n; if (s.inv[k] <= 0) delete s.inv[k]; }
+    if (id === 'eat') playerHp = Math.min(playerMax(), playerHp + 60);
+    if (r.buff) s.buffs[r.buff] = 1;
+    if (id === 'soup') playerHp = playerMax();
+    sfx.buy(); ui.toast(`🍲 ${r.name}! ${r.desc}`, 'good');
+  } else if (kind === 'w') {
+    const w = WORKSHOP[id];
+    if (lv(id) >= w.max || !payRes(w.need)) return;
+    s.up[id] = lv(id) + 1;
+    house.refresh(); sfx.buy();
+    ui.toast(`🔧 ${w.name} pronto!`, 'good');
+  }
+  hudDirty = true;
+  openNpc(npcWho);
+}
+
 function gameOver() {
   if (over) return;
   over = true;
@@ -917,7 +1006,7 @@ function gameOver() {
   let best = 0;
   try { best = Number(localStorage.getItem('tv-best') || 0); if (s.nights > best) localStorage.setItem('tv-best', String(s.nights)); } catch { /* */ }
   ui.openPanel('over', `<div class="over"><div class="ic big">🧟</div>
-    <p>A horda invadiu sua casa na <b>noite ${s.nights + 1}</b>.</p>
+    <p>A horda invadiu a casa e pegou sua família na <b>noite ${s.nights + 1}</b>.</p>
     <p>Noites sobrevividas: <b>${s.nights}</b>${best ? ` · Recorde: <b>${Math.max(best, s.nights)}</b>` : ''}<br>Zumbis eliminados: <b>${s.stats.kills}</b></p>
     <p>Você ganha <b>+${gain} ponto${gain > 1 ? 's' : ''} de Legado</b> (permanentes: +10% vendas, +5% crescimento e +1 ponto de habilidade cada).</p>
     <button class="big" data-a="restart">🌱 Recomeçar com o Legado</button></div>`);
@@ -1146,7 +1235,7 @@ function frame(now: number) {
   if (playing && !over) {
     horde.update(dt, realTime, {
       player: player.pos, tractor: lv('tractor') ? tractor.group.position : null, tractorSpeed: s.inTractor ? tractor.speed : 0, camera,
-      hurtPlayer, hurtBase, kill: (z) => onKill(z, 'plant'), ramHit,
+      hurtPlayer, hurtBase, kill: (z) => onKill(z, 'plant'), ramHit, house,
       walls, speedMult: nightMod === 'blood' ? 1.3 : 1,
     });
     walls.update(dt, realTime, camera);
@@ -1155,10 +1244,14 @@ function frame(now: number) {
   }
   if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * shake * 0.6; camera.position.y += (Math.random() - 0.5) * shake * 0.6; }
   creatures.update(dt, s.phase === 'night' && playing, realTime, camera.position);
+  if (playing) {
+    family.update(dt, realTime, player.pos, lv('kidcans') ? 1.8 : 1);
+    if (!over) house.update(dt, realTime, s.phase === 'night', (z) => onKill(z, 'plant'), (a, b) => { fx.spawn(a.x, a.y, a.z, 0xffe066, 3, 0.3, 1, 0, 0.15); fx.spawn(b.x, b.y, b.z, 0xffe066, 5, 0.6, 2, 5, 0.3); if (shotT <= 0) { shotT = 0.07; sfx.shoot(3); } });
+  }
   renderer.toneMappingExposure = 1.05 + world.night * 0.12;
   {
     const on = world.night > 0.3 && playing;
-    flashlight.intensity = on ? world.night * (aerial ? 900 : s.inTractor ? 160 : 55) : 0;
+    flashlight.intensity = on ? world.night * (aerial ? 700 : s.inTractor ? 120 : 30) : 0;
     if (aerial) {
       flashlight.position.copy(camera.position);
       flashlight.target.position.set(aer.x, 0, aer.z);
@@ -1209,4 +1302,4 @@ window.addEventListener('pagehide', doSave);
 window.addEventListener('beforeunload', doSave);
 
 // debug para testes
-(window as any).__tv = { game, farm, player, tractor, horde, walls, defense, endNight, setLoot: (l: Record<string, number>) => { nightLoot = l; }, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };
+(window as any).__tv = { game, farm, player, tractor, horde, walls, defense, endNight, family, house, openNpc, setLoot: (l: Record<string, number>) => { nightLoot = l; }, startNight, planNext, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };

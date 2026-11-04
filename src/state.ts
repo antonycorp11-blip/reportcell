@@ -32,6 +32,8 @@ export interface State {
   baseHp: number;
   walls: { type: number; x: number; z: number; rot: number; hp: number }[];
   res: Record<string, number>;
+  entries: number[];
+  buffs: Record<string, number>;
 }
 
 export const DAY_LEN = 240;
@@ -51,7 +53,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
     skills: {}, tpCam: true,
-    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 400, walls: [], res: { wood: 12, metal: 3, mseed: 0, food: 2 },
+    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 150, walls: [], res: { wood: 12, metal: 3, mseed: 0, food: 2 }, entries: [], buffs: {},
   };
 }
 
@@ -71,7 +73,7 @@ export const stat = (k: string) => statCache[k] || 0;
 export const pct = (k: string) => 1 + stat(k) / 100;
 
 export const xpNeed = (l: number) => Math.floor(40 * Math.pow(1.45, l - 1));
-export const growthMult = () => (1 + 0.12 * lv('growth')) * (1 + 0.05 * game.s.legacy) * pct('growth');
+export const growthMult = () => (1 + 0.12 * lv('growth')) * (1 + 0.05 * game.s.legacy) * pct('growth') * (game.s.buffs?.fert ? 1.4 : 1);
 export const yieldMult = () => (1 + 0.15 * lv('yield')) * pct('yield');
 export const sellMult = () => (1 + 0.06 * lv('price')) * (1 + 0.1 * game.s.legacy) * pct('sell') * (sk('c6') ? 1.15 : 1);
 export const siloCap = () => Math.round(80 * (1 + lv('silo')) );
@@ -81,8 +83,8 @@ export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots')) * pct('walk');
 export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine')) * pct('tractor');
 export const implWidth = () => 1 + 2 * lv('width') + 2 * sk('m6');
 export const legacyGain = (s: State) => Math.max(1, Math.floor(s.nights / 2));
-export const baseMax = () => Math.round(400 * (1 + 0.5 * lv('fort')) * pct('base'));
-export const playerMax = () => 100 + 40 * lv('medkit') + stat('uhp');
+export const baseMax = () => Math.round(150 * (1 + 0.5 * lv('fort')) * pct('base'));
+export const playerMax = () => 100 + 40 * lv('medkit') + stat('uhp') + (game.s.buffs?.soup ? 40 : 0);
 
 export function era(s: State): number {
   if (s.nights >= 15 || s.prestiges > 0) return 4;

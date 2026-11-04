@@ -901,7 +901,7 @@ export class World {
     for (const l of this.lampLights) l.intensity = this.night * 28;
     this.updateTorches(dt, time);
     this.updateFireflies(dt, time);
-    this.porch.intensity = this.night * 30;
+    this.porch.intensity = this.night * 12;
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, this.night - 0.3) * (1 - rf);
     this.sky.position.copy(camPos);
     this.stars.position.copy(camPos);

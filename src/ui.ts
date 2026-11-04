@@ -17,11 +17,11 @@ export interface Handlers {
   open(): void; close(): void;
   setting(k: string, v: unknown): void; reset(): void; fullscreen(): void;
   learn(id: string): void; toggleCam(): void;
-  startNight(): void; restart(): void; wall(i: number): void;
+  startNight(): void; restart(): void; wall(i: number): void; npc(v: string): void;
   aerial(): void; zoom(d: number): void;
 }
 let H: Handlers;
-let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' | 'hub' | 'grade' = '';
+let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' | 'hub' | 'grade' | 'npc' = '';
 export const blocking = () => panel === 'grade' || panel === 'over' || panel === 'welcome';
 let selSkill = 'root';
 let shopTab: Tab | 'land' | 'legacy' = 'def';
@@ -58,6 +58,7 @@ export function initUI(h: Handlers) {
     switch (a) {
       case 'close': closePanel(); break;
       case 'restart': H.restart(); return;
+      case 'npc': H.npc(v); return;
       case 'node': if (dragged) { dragged = false; return; } selSkill = v; break;
       case 'go': openPanel(v as typeof panel); return;
       case 'learn': H.learn(v); break;
@@ -85,7 +86,7 @@ export function initUI(h: Handlers) {
 export const isPanelOpen = () => panel !== '';
 
 export function openPanel(p: typeof panel, html = '') {
-  if (p === 'welcome' || p === 'over' || p === 'grade') welcomeHtml = html;
+  if (p === 'welcome' || p === 'over' || p === 'grade' || p === 'npc') welcomeHtml = html;
   panel = p;
   $('panelWrap').classList.remove('hidden');
   H.open();
@@ -185,6 +186,9 @@ function renderPanel() {
       <button data-a="go" data-v="market"><span>📈</span><b>Mercado</b><small>Silo ${used}/${cap}</small></button>
       <button data-a="go" data-v="menu"><span>⚙️</span><b>Ajustes</b><small>Som, gráficos, dificuldade</small></button>
     </div>`;
+  } else if (panel === 'npc') {
+    head = '💬 Família';
+    content = welcomeHtml;
   } else if (panel === 'grade') {
     head = '🌅 Amanhecer';
     content = welcomeHtml;

@@ -41,7 +41,7 @@ export class Post {
     this.vm.clearDepth = true;
     this.composer.addPass(this.vm);
     const k = high ? 1 : 0.5;
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x * k, size.y * k), 0.55, 0.5, 0.82);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x * k, size.y * k), 0.4, 0.45, 0.93);
     this.composer.addPass(this.bloom);
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
@@ -56,7 +56,7 @@ export class Post {
     this.grade.uniforms.uNight.value = night;
     this.grade.uniforms.uDanger.value = danger;
     this.grade.uniforms.uHurt.value = hurt;
-    this.bloom.strength = 0.45 + night * 0.35;
+    this.bloom.strength = 0.32 + night * 0.18;
     this.composer.render();
   }
 }
