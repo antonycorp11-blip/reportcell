@@ -136,12 +136,14 @@ export class Family {
 
   private pickTask(n: NPC) {
     if (n.who === 'bia' || n.who === 'leo') {
-      // procura canteiro com sede
+      // procura muda com sede: só o que ainda está crescendo (maduro não precisa de água)
+      // prioridade: mais seca e mais nova primeiro, depois a mais perto
       let best = -1, bd = Infinity;
       for (let t = 0; t < N; t++) {
-        if (!live(t) || T.s[t] !== 2 || T.w[t] > 0.45) continue;
-        const d = (tileX(t) - n.g.position.x) ** 2 + (tileZ(t) - n.g.position.z) ** 2 + (t % 7);
-        if (d < bd && !this.list.some((o) => o !== n && o.task === t)) { bd = d; best = t; }
+        if (!live(t) || T.s[t] !== 2 || T.g[t] >= 1 || T.w[t] > 0.5) continue;
+        const dist = Math.hypot(tileX(t) - n.g.position.x, tileZ(t) - n.g.position.z);
+        const score = dist + T.w[t] * 60 + T.g[t] * 25;
+        if (score < bd && !this.list.some((o) => o !== n && o.task >= 0 && Math.abs(tileX(o.task) - tileX(t)) + Math.abs(tileZ(o.task) - tileZ(t)) < 4)) { bd = score; best = t; }
       }
       n.task = best;
       if (best >= 0) { n.target.set(tileX(best) + 1.1, 0, tileZ(best) + 0.6); return; }
@@ -157,6 +159,10 @@ export class Family {
     for (const n of this.list) {
       if (n.state === 'inside') { n.g.visible = false; continue; }
       const p = n.g.position;
+      if (n.state === 'day' && n.task >= 0 && n.wait <= 0) {
+        const t = n.task;
+        if (T.s[t] !== 2 || T.g[t] >= 1 || T.w[t] > 0.7) { n.task = -1; this.pickTask(n); }
+      }
       const speed = n.state === 'run' ? 5.2 : n.who === 'ze' ? 1.1 : n.who === 'ana' ? 1.5 : 2.1;
       const dx = n.target.x - p.x, dz = n.target.z - p.z, d = Math.hypot(dx, dz);
       let moving = false;
@@ -174,8 +180,8 @@ export class Family {
         // chegou: regar?
         if (n.task >= 0) {
           const t = n.task;
-          if (T.s[t] === 2) {
-            for (const tt of farm.area(t, 1)) if (T.s[tt] === 1 || T.s[tt] === 2) T.w[tt] = 1;
+          if (T.s[t] === 2 && T.g[t] < 1) {
+            for (const tt of farm.area(t, 1)) if (T.s[tt] === 2 && T.g[tt] < 1) T.w[tt] = 1;
             farm.markDirty();
             this.fx.spawn(tileX(t), 0.9, tileZ(t), 0x6fc3ff, 18, 1.4, 1.5, 9, 0.8);
             n.g.rotation.y = Math.atan2(-(tileX(t) - p.x), -(tileZ(t) - p.z));
