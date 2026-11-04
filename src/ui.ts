@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { game, fmt, xpNeed, era, siloCap, siloUsed, canCap, lv, legacyGain, vitality } from './state';
 import { CROPS, ERAS, ERA_ICONS, GOALS, HAND_TOOLS, IMPLEMENTS, ITEMS, UPGRADES, upCost, type Tab } from './data';
 import { price, trend } from './economy';
-import { PARCELS, owned } from './farm';
+import { PARCELS, owned, isNextParcel } from './farm';
 import { parcelPrice, parcelLevel } from './world';
 import { SKILLS, SKMAP, BRANCHES, freePoints, lockReason } from './skills';
 import { WALLS } from './walls';
@@ -17,6 +17,7 @@ export interface Handlers {
   setting(k: string, v: unknown): void; reset(): void; fullscreen(): void;
   learn(id: string): void; toggleCam(): void;
   startNight(): void; restart(): void; wall(i: number): void;
+  aerial(): void; zoom(d: number): void;
 }
 let H: Handlers;
 let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' = '';
@@ -37,6 +38,10 @@ export function initUI(h: Handlers) {
   tap($('btnSkills'), () => openPanel('skills'));
   tap($('btnCam'), () => H.toggleCam());
   tap($('btnNight'), () => H.startNight());
+  tap($('btnAerial'), () => H.aerial());
+  tap($('btnAerialBack'), () => H.aerial());
+  tap($('btnZoomIn'), () => H.zoom(-1));
+  tap($('btnZoomOut'), () => H.zoom(1));
   $('panelWrap').addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
     if (t.id === 'panelWrap') { if (panel !== 'over') closePanel(); return; }
@@ -104,7 +109,7 @@ function renderPanel() {
   const s = game.s;
   if (panel === 'shop') {
     head = '🛒 Loja da Fazenda';
-    const T: [string, string][] = [['def', '🛡️ Defesa'], ['agro', '🌱 Agronomia'], ['mec', '🔧 Mecânica'], ['com', '💰 Comércio'], ['auto', '🤖 Automação'], ['build', '🏗️ Construções'], ['land', '🗺️ Terras'], ['legacy', '🌳 Legado']];
+    const T: [string, string][] = [['def', '🛡️ Defesa'], ['agro', '🌱 Agronomia'], ['mec', '🔧 Mecânica'], ['com', '💰 Comércio'], ['auto', '🤖 Automação'], ['build', '🏗️ Construções'], ['land', '🏗️ Expansões'], ['legacy', '🌳 Legado']];
     tabs = `<div class="tabs scroll">${T.map(([k, n]) => `<button data-a="tab" data-v="${k}" class="${shopTab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     if (shopTab === 'land') content = landTab();
     else if (shopTab === 'legacy') content = legacyTab();
@@ -206,10 +211,10 @@ function landTab(): string {
   const s = game.s; const n = s.parcels.length;
   const cost = parcelPrice(n), lvlReq = parcelLevel(n);
   const free = PARCELS.filter((p) => !owned[p.id]);
-  if (!free.length) return '<p class="empty">Você já é dono de todas as terras! 🏆</p>';
-  return `<p class="note">Cada terreno tem 100 canteiros. Também dá para comprar pelas placas no campo.</p>` + free.map((p) => {
+  if (!free.length) return '<p class="empty">Sua fazenda ocupa todo o vale! 🏆</p>';
+  return `<p class="note">Limpe e cerque novas áreas ao lado da fazenda (100 canteiros cada). Também dá para construir pelas estacas no campo.</p>` + free.filter((p) => isNextParcel(p.id)).map((p) => {
     const lock = s.level < lvlReq ? `🔒 Requer nível ${lvlReq}` : '';
-    return `<div class="item ${lock ? 'locked' : ''}"><div class="ic">🗺️</div><div class="it"><b>Terreno ${p.id + 1}</b><p>${lock || (p.fert > 1 ? `Solo fértil: +${Math.round((p.fert - 1) * 100)}% de produção` : 'Solo comum')}</p></div>
+    return `<div class="item ${lock ? 'locked' : ''}"><div class="ic">🏗️</div><div class="it"><b>Expansão ${p.id + 1}</b><p>${lock || (p.fert > 1 ? `Solo fértil: +${Math.round((p.fert - 1) * 100)}% de produção` : 'Solo comum')}</p></div>
       <button class="buy" data-a="parcel" data-v="${p.id}" ${lock || s.money < cost ? 'disabled' : ''}>${fmt(cost)}</button></div>`;
   }).join('');
 }
@@ -230,6 +235,10 @@ export function updateHud() {
   $('money').textContent = fmt(s.money);
   $('lvlNum').textContent = String(s.level);
   ($('xpBar') as HTMLElement).style.width = Math.min(100, (s.xp / xpNeed(s.level)) * 100) + '%';
+  const C = 2 * Math.PI * 19;
+  const ring = $('xpRing') as unknown as SVGCircleElement;
+  ring.style.strokeDasharray = String(C);
+  ring.style.strokeDashoffset = String(C * (1 - Math.min(1, s.xp / xpNeed(s.level))));
   const e = era(s);
   $('era').textContent = `${ERA_ICONS[e]} ${ERAS[e]}`;
   const g = GOALS[s.goal];
@@ -244,6 +253,7 @@ export function updateHud() {
     $('goalReward').textContent = '';
   }
   ($('canBar') as HTMLElement).style.width = (s.can / canCap()) * 100 + '%';
+  $('canTxt').textContent = `${s.can}/${canCap()}`;
   const used = siloUsed(), cap = siloCap();
   ($('siloBar') as HTMLElement).style.width = Math.min(100, (used / cap) * 100) + '%';
   $('mSilo').classList.toggle('full', used >= cap);
@@ -256,12 +266,14 @@ export function updateHud() {
   $('btnCam').classList.toggle('hidden', !s.inTractor);
 }
 
-export function setPhase(phase: 'day' | 'night', n: number, left: number, zombies: number, raining: boolean) {
+export function setPhase(phase: 'day' | 'night', n: number, left: number, zombies: number, raining: boolean, prog = 0) {
   const night = phase === 'night';
   document.body.classList.toggle('isNight', night);
+  ($('phaseBar') as HTMLElement).style.width = Math.max(0, Math.min(1, prog)) * 100 + '%';
+  $('phase').classList.toggle('night', night);
   $('clockIcon').textContent = night ? '🧟' : raining ? '🌧️' : '☀️';
   const m = Math.floor(Math.max(0, left) / 60), sec = Math.floor(Math.max(0, left) % 60);
-  $('clockTxt').textContent = night ? `Noite ${n} · ${zombies} restantes` : `Dia ${n} · noite em ${m}:${String(sec).padStart(2, '0')}`;
+  $('clockTxt').innerHTML = night ? `NOITE ${n} <span>· 🧟 ${zombies}</span>` : `DIA ${n} <span>· noite em ${m}:${String(sec).padStart(2, '0')}</span>`;
   $('btnNight').classList.toggle('hidden', night);
 }
 
@@ -273,7 +285,9 @@ export function setPreview(html: string) {
   el.classList.toggle('hidden', !html);
 }
 
-export function setVitals(hp: number, base: number) {
+export function setVitals(hp: number, base: number, hpV = 0, baseV = 0) {
+  $('hpTxt').textContent = String(Math.ceil(hpV));
+  $('baseTxt').textContent = String(Math.ceil(baseV));
   ($('hpBar') as HTMLElement).style.width = Math.max(0, hp) * 100 + '%';
   ($('baseBar') as HTMLElement).style.width = Math.max(0, base) * 100 + '%';
   $('mBase').classList.toggle('danger', base < 0.35);

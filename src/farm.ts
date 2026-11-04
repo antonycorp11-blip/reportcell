@@ -39,6 +39,9 @@ export function damageTile(t: number, d: number): boolean {
   return false;
 }
 export const owned = new Uint8Array(PCOUNT);
+/** animação de surgimento de uma expansão (0..1) */
+export const appear = new Float32Array(PCOUNT).fill(1);
+export const isNextParcel = (id: number) => !owned[id] && PARCELS.some((o) => owned[o.id] && Math.abs(o.x0 - PARCELS[id].x0) + Math.abs(o.z0 - PARCELS[id].z0) === 24);
 let dirty = true;
 export let rain = 0;
 export function setRain(r: number) { rain = r; }
@@ -272,6 +275,7 @@ export class FarmView {
   }
 
   update(dt: number) {
+    for (let p = 0; p < PCOUNT; p++) if (appear[p] < 1) { appear[p] = Math.min(1, appear[p] + dt * 0.8); dirty = true; }
     this.timer -= dt;
     if (!dirty && this.timer > 0) return;
     this.timer = 0.15;
@@ -284,19 +288,22 @@ export class FarmView {
     const no = new Array(this.crops.length).fill(0);
     const cx = this.cam.x, cz = this.cam.z;
     for (let t = 0; t < N; t++) {
-      const own = owned[(t / 100) | 0] === 1;
+      const pid = (t / 100) | 0;
+      const own = owned[pid] === 1;
+      if (!own) continue;
       const x = tileX(t), z = tileZ(t);
       const s = T.s[t];
+      const ap = appear[pid] >= 1 ? 1 : Math.max(0.001, Math.min(1, appear[pid] * 1.6 - (((t % 10) + (((t % 100) / 10) | 0)) / 18) * 0.6));
       if (s === 0) {
         q.setFromAxisAngle(up, (t * 2.399) % 6.283);
-        const k = own ? 1 : 1.45;
-        m4.compose(pv.set(x, 0, z), q, sv.set(1, k, 1));
+        const k = 1;
+        m4.compose(pv.set(x, 0, z), q, sv.set(ap, k * ap, ap));
         this.grass.setMatrixAt(ng, m4);
         this.grass.setColorAt(ng, own ? gOwn : gFree);
         ng++;
         continue;
       }
-      m4.makeTranslation(x, 0, z);
+      m4.makeScale(ap, ap, ap).setPosition(x, 0, z);
       this.soil.setMatrixAt(ns, m4);
       if (s === 3) col.copy(C_STUB).lerp(C_WET, T.w[t] * 0.5);
       else col.copy(C_DRY).lerp(C_WET, T.w[t]);

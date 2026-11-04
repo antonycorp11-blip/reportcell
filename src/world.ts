@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { part, merge, cone, cyl, ico, box, bx, mat, windMat, rng, fbm, heightAt, Sign, prism, dotTexture, shade, planarUV, noiseTexture } from './gfx';
 import { GrassField } from './grass';
 import { colliders } from './physics';
-import { PARCELS, owned, setRain, tileX, tileZ, randomRipe, PN, TILE } from './farm';
+import { PARCELS, owned, setRain, tileX, tileZ, randomRipe, PN, TILE, isNextParcel } from './farm';
 import { game, vitality, lv, sk, siloUsed, siloCap, fmt } from './state';
 import { isProcessing } from './economy';
 import type { FX } from './fx';
@@ -60,6 +60,9 @@ export class World {
   private siloGroup = new THREE.Group();
   private bales: THREE.Mesh[] = [];
   parcelSigns: Sign[] = [];
+  private sites: THREE.Group[] = [];
+  private rings: THREE.Mesh | null = null;
+  private dirtTex = noiseTexture('dirt');
   tractorSign: Sign;
   private millSign: Sign;
   private pressSign: Sign;
@@ -161,10 +164,26 @@ export class World {
 
     // Placas
     for (const p of PARCELS) {
-      const s = new Sign(['TERRENO', '']);
+      const s = new Sign(['EXPANSÃO', '']);
       s.position.copy(parcelSignPos(p.id));
       scene.add(s);
       this.parcelSigns.push(s);
+      // canteiro de obra: estacas nos cantos com fita
+      const site = new THREE.Group();
+      const corners: [number, number][] = [[p.x0, p.z0], [p.x0 + 20, p.z0], [p.x0 + 20, p.z0 + 20], [p.x0, p.z0 + 20]];
+      for (const [cx, cz] of corners) {
+        const st = new THREE.Mesh(cyl(0.07, 0.09, 1.3, 5), mat(0x9a6a3c)); st.position.set(cx, 0.65, cz); st.castShadow = true; site.add(st);
+        const fl = new THREE.Mesh(box(0.35, 0.22, 0.02), mat(0xff6a2a)); fl.position.set(cx + 0.18, 1.2, cz); site.add(fl);
+      }
+      for (let k = 0; k < 4; k++) {
+        const [ax, az] = corners[k], [bx2, bz] = corners[(k + 1) % 4];
+        const len = Math.hypot(bx2 - ax, bz - az);
+        const rope = new THREE.Mesh(box(len, 0.04, 0.04), mat(0xffd23f));
+        rope.position.set((ax + bx2) / 2, 1.0, (az + bz) / 2); rope.rotation.y = -Math.atan2(bz - az, bx2 - ax);
+        site.add(rope);
+      }
+      scene.add(site);
+      this.sites.push(site);
     }
     this.tractorSign = new Sign(['TRATOR', '$350 · Nv 3']);
     this.tractorSign.position.copy(POS.tractor);
@@ -216,10 +235,7 @@ export class World {
       const g = new THREE.PlaneGeometry(x2 - x1, z2 - z1); g.rotateX(-Math.PI / 2);
       P.push(part(g, c, [(x1 + x2) / 2, 0.012, (z1 + z2) / 2]));
     };
-    strip(-38, -8, 38, -4); strip(-38, -80, 38, -76);
-    strip(-38, -80, -34, -4); strip(34, -80, 38, -4);
-    strip(-14, -80, -10, -4, dirt2); strip(10, -80, 14, -4, dirt2);
-    strip(-38, -32, 38, -28, dirt2); strip(-38, -56, 38, -52, dirt2);
+    void dirt2;
     strip(-3, -4, 3, 62);
     strip(-12, 10.5, -3, 13.5); strip(3, 10.5, 12, 13.5);
     strip(-46, -20, -38, -16); strip(38, -20, 46, -16);
@@ -770,9 +786,29 @@ export class World {
     const n = s.parcels.length;
     for (const p of PARCELS) {
       const sign = this.parcelSigns[p.id];
-      sign.visible = !owned[p.id];
-      if (!owned[p.id]) sign.setText(['TERRENO À VENDA', `${fmt(parcelPrice(n))} · Nv ${parcelLevel(n)}`, p.fert > 1 ? `Solo fértil +${Math.round((p.fert - 1) * 100)}%` : 'Solo comum']);
+      const next = isNextParcel(p.id);
+      sign.visible = next;
+      this.sites[p.id].visible = next;
+      if (next) sign.setText(['🏗️ EXPANSÃO', `Construir ${fmt(parcelPrice(n))} · Nv ${parcelLevel(n)}`, p.fert > 1 ? `Solo fértil +${Math.round((p.fert - 1) * 100)}%` : 'Solo comum']);
     }
+    // trilhas de terra ao redor das áreas construídas
+    if (this.rings) { this.scene.remove(this.rings); this.rings.geometry.dispose(); }
+    const R: THREE.BufferGeometry[] = [];
+    const strip = (x1: number, z1: number, x2: number, z2: number) => { const g = new THREE.PlaneGeometry(x2 - x1, z2 - z1); g.rotateX(-Math.PI / 2); R.push(part(g, 0xa98a5c, [(x1 + x2) / 2, 0.013, (z1 + z2) / 2])); };
+    const rects: number[] = [];
+    for (const p of PARCELS) {
+      if (!owned[p.id]) continue;
+      strip(p.x0 - 2, p.z0 - 2, p.x0 + 22, p.z0); strip(p.x0 - 2, p.z0 + 20, p.x0 + 22, p.z0 + 22);
+      strip(p.x0 - 2, p.z0, p.x0, p.z0 + 20); strip(p.x0 + 20, p.z0, p.x0 + 22, p.z0 + 20);
+      rects.push(p.x0 - 2.3, p.z0 - 2.3, p.x0 + 22.3, p.z0 + 22.3);
+    }
+    strip(-3, -6, 3, -4);
+    if (R.length) {
+      this.rings = new THREE.Mesh(planarUV(merge(R), 5), new THREE.MeshLambertMaterial({ vertexColors: true, map: this.dirtTex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      this.rings.receiveShadow = true;
+      this.scene.add(this.rings);
+    }
+    this.grass.setRects(rects);
     this.tractorSign.visible = !lv('tractor');
     const mill = lv('mill') > 0, press = lv('press') > 0;
     this.millGroup.visible = mill; this.millSite.visible = !mill; this.millSign.visible = !mill;

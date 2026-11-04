@@ -20,37 +20,58 @@
   <canvas id="c"></canvas>
 
   <div id="hud" class="hidden">
-    <div id="top">
-      <div id="stats" class="card">
-        <div id="money">$0</div>
-        <div id="lvlRow"><span class="lv">Nv <b id="lvlNum">1</b></span><div class="bar xp"><i id="xpBar"></i></div></div>
-        <div id="era"></div>
+    <!-- canto superior esquerdo: jogador e recursos -->
+    <div id="tl">
+      <div id="pcard" class="glass">
+        <div id="lvlRing">
+          <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="trk"/><circle id="xpRing" cx="22" cy="22" r="19" class="val"/></svg>
+          <b id="lvlNum">1</b>
+        </div>
+        <div class="pinfo">
+          <div id="money">$0</div>
+          <div id="era"></div>
+        </div>
+        <i id="xpBar" class="hidden"></i>
       </div>
-      <div id="goal" class="card">
-        <div class="gTitle">🎯 <span id="goalText"></span></div>
-        <div class="bar"><i id="goalBar"></i></div>
+      <div id="vitals" class="glass">
+        <div class="vrow" id="mBase"><span class="vi">🏠</span><div class="vbar base"><i id="baseBar"></i></div><b id="baseTxt"></b></div>
+        <div class="vrow" id="mHp"><span class="vi">❤️</span><div class="vbar hp"><i id="hpBar"></i></div><b id="hpTxt"></b></div>
+        <div class="vrow" id="mCan"><span class="vi">💧</span><div class="vbar water"><i id="canBar"></i></div><b id="canTxt"></b></div>
+        <div class="vrow" id="mSilo"><span class="vi">🏚️</span><div class="vbar silo"><i id="siloBar"></i></div><b id="siloTxt"></b></div>
+      </div>
+      <div id="goal" class="glass">
+        <div class="gTitle"><span class="gi">🎯</span><span id="goalText"></span></div>
+        <div class="vbar goalb"><i id="goalBar"></i></div>
         <div id="goalReward"></div>
       </div>
+    </div>
+
+    <!-- centro: fase do dia/noite -->
+    <div id="tc">
+      <div id="phase" class="glass">
+        <span id="clockIcon">☀️</span>
+        <div class="ph">
+          <b id="clockTxt"></b>
+          <div class="vbar phaseb"><i id="phaseBar"></i></div>
+        </div>
+        <button id="btnNight">🌙 Começar</button>
+      </div>
+      <div id="wavePreview" class="hidden"></div>
+    </div>
+
+    <!-- canto superior direito -->
+    <div id="tr">
       <div id="menuBtns">
         <button class="rb hidden" id="btnCam" title="Câmera (V)">🎥</button>
+        <button class="rb" id="btnAerial" title="Visão aérea (Q)">🦅</button>
         <button class="rb" id="btnSkills" title="Habilidades (K)">⭐<i id="skBadge" class="badge hidden">0</i></button>
         <button class="rb" id="btnShop" title="Loja (B)">🛒</button>
         <button class="rb" id="btnMarket" title="Mercado (M)">📈</button>
         <button class="rb" id="btnMenu" title="Menu">⚙️</button>
       </div>
+      <canvas id="minimap"></canvas>
     </div>
 
-    <div id="meters">
-      <div class="meter" id="mClock"><span id="clockIcon">☀️</span><b id="clockTxt"></b></div>
-      <div class="meter" id="mBase"><span>🏠</span><div class="bar base"><i id="baseBar"></i></div></div>
-      <div class="meter" id="mHp"><span>❤️</span><div class="bar hp"><i id="hpBar"></i></div></div>
-      <div class="meter" id="mCan"><span>💧</span><div class="bar water"><i id="canBar"></i></div></div>
-      <div class="meter" id="mSilo"><span>🏚️</span><div class="bar silo"><i id="siloBar"></i></div><b id="siloTxt"></b></div>
-    </div>
-
-    <button id="btnNight">🌙 Começar a noite</button>
-    <div id="wavePreview" class="hidden"></div>
-    <canvas id="minimap"></canvas>
     <div id="hurt"></div>
     <div id="crosshair"></div>
     <div id="tileInfo" class="hidden"></div>
@@ -60,6 +81,12 @@
     <div id="bottom">
       <div id="cropbar" class="hidden"></div>
       <div id="toolbar"></div>
+    </div>
+
+    <div id="aerialBar">
+      <button id="btnZoomIn">➕</button>
+      <button id="btnAerialBack">👁️ Voltar ao chão</button>
+      <button id="btnZoomOut">➖</button>
     </div>
 
     <div id="joy"><div id="joyKnob"></div></div>
@@ -85,7 +112,7 @@
       <button id="playBtn">▶ Jogar</button>
       <div class="tips">
         <div class="tTouch">🕹️ Joystick à esquerda · 👆 arraste à direita para olhar · ⛏️ botão para usar</div>
-        <div class="tDesk">WASD andar · Mouse olhar · Clique usar · E interagir · 1-5 ferramentas · B loja · M mercado · K habilidades · V câmera · N começar a noite</div>
+        <div class="tDesk">WASD andar · Mouse olhar · Clique usar · E interagir · 1-5 ferramentas · B loja · M mercado · K habilidades · V câmera · Q visão aérea · N começar a noite</div>
       </div>
       <p class="rotate">📱 Gire o celular para paisagem para a melhor experiência</p>
     </div>

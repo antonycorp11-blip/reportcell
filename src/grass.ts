@@ -9,6 +9,7 @@ export class GrassField {
   mesh: THREE.InstancedMesh;
   private mat: THREE.MeshLambertMaterial;
   private uCam = { value: new THREE.Vector3() };
+  private uRects = { value: Array.from({ length: 9 }, () => new THREE.Vector4(9999, 9999, 9999, 9999)) };
 
   constructor(scene: THREE.Scene, high: boolean) {
     const count = high ? 15000 : 6500;
@@ -24,10 +25,12 @@ export class GrassField {
     }
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, color: 0x7cc456 });
     const uCam = this.uCam;
+    const rects = this.uRects;
     this.mat.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = uTime;
       sh.uniforms.uCam = uCam;
-      sh.vertexShader = 'uniform float uTime;\nuniform vec3 uCam;\n' + sh.vertexShader.replace(
+      sh.uniforms.uRects = rects;
+      sh.vertexShader = 'uniform float uTime;\nuniform vec3 uCam;\nuniform vec4 uRects[9];\n' + sh.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
         vec3 ip = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -36,7 +39,7 @@ export class GrassField {
         vec2 w = uCam.xz + rel;
         float h1 = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453);
         float hide = 0.0;
-        if (w.x > -36.6 && w.x < 36.6 && w.y > -78.6 && w.y < -5.4) hide = 1.0;
+        for (int i = 0; i < 9; i++) { vec4 r = uRects[i]; if (w.x > r.x && w.x < r.z && w.y > r.y && w.y < r.w) hide = 1.0; }
         if (abs(w.x) < 3.6 && w.y > -4.5) hide = 1.0;
         if (length(w - vec2(0.0, 3.0)) < 10.6) hide = 1.0;
         if (w.y > 10.0 && w.y < 14.0 && abs(w.x) < 12.5) hide = 1.0;
@@ -76,6 +79,10 @@ export class GrassField {
   }
 
   setColor(c: THREE.Color) { this.mat.color.copy(c); }
+
+  setRects(r: number[]) {
+    this.uRects.value.forEach((v, i) => { if (i * 4 < r.length) v.set(r[i * 4], r[i * 4 + 1], r[i * 4 + 2], r[i * 4 + 3]); else v.set(9999, 9999, 9999, 9999); });
+  }
 
   update(cam: THREE.Vector3) { this.uCam.value.copy(cam); }
 }

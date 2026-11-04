@@ -89,7 +89,7 @@ defense.ctx = {
   },
 };
 let playerHp = 100, hurtT = 10, deadT = 0, over = false, shotT = 0, baseAlertT = 0, groanT = 3, shake = 0;
-let spawnQueue: WaveEntry[] = [], spawnT = 0, waveTotal = 0, visDay = 0.05;
+let spawnQueue: WaveEntry[] = [], spawnT = 0, waveTotal = 0, visDay = 0.1;
 
 // ------------------------------------------------------------------ estado inicial
 function applyState() {
@@ -196,18 +196,21 @@ function buyUpgrade(id: string) {
 
 function buyParcel(id: number) {
   if (farm.owned[id]) return;
+  if (!farm.isNextParcel(id)) { ui.toast('🚧 Construa ao lado de uma área que você já tem', 'warn'); return; }
   const n = s.parcels.length;
   const need = parcelLevel(n);
   if (s.level < need) { ui.toast(`🔒 Requer nível ${need}`, 'warn'); sfx.error(); return; }
   const cost = parcelPrice(n);
   if (!spend(cost)) { ui.toast(`💸 Faltam ${fmt(cost - s.money)}`, 'warn'); sfx.error(); return; }
   s.parcels.push(id);
+  farm.appear[id] = 0;
   farm.syncOwned();
   world.refresh();
   sfx.buy();
   const p = parcelSignPos(id);
+  for (let k = 0; k < 6; k++) fx.spawn(PARCELS[id].x0 + 3 + k * 3, 1, PARCELS[id].z0 + 10, 0xb08a5a, 25, 4, 4, 8, 1.2);
   fx.spawn(p.x, 2, p.z - 5, 0x9dff7a, 60, 6, 5, 5, 1.6);
-  ui.banner('🗺️ Novo terreno!', `+100 canteiros${PARCELS[id].fert > 1 ? ` · solo fértil +${Math.round((PARCELS[id].fert - 1) * 100)}%` : ''}`);
+  ui.banner('🏗️ Expansão construída!', `+100 canteiros${PARCELS[id].fert > 1 ? ` · solo fértil +${Math.round((PARCELS[id].fert - 1) * 100)}%` : ''}`);
 }
 
 function moneyFloat(g: number, big = false) {
@@ -247,6 +250,8 @@ ui.initUI({
     hudDirty = true;
   },
   toggleCam,
+  aerial: toggleAerial,
+  zoom: (d: number) => { aer.th = Math.max(22, Math.min(140, aer.th * (d > 0 ? 1.25 : 0.8))); },
   tool: selectTool,
   wall(i) { buildType = i; sfx.click(); ui.renderCropbar(s.inTractor, buildType); ui.toast(`${WALLS[i].icon} <b>${WALLS[i].name}</b> · ${fmt(WALLS[i].cost)} · ${WALLS[i].desc}`); },
   crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
@@ -286,6 +291,41 @@ function toggleCam() {
   tractor.headYaw = 0;
   ui.toast(s.tpCam ? '🎥 Câmera em terceira pessoa' : '🎥 Câmera na cabine');
   sfx.click();
+}
+
+// ------------------------------------------------------------------ visão aérea
+let aerial = false;
+const aer = { x: 0, z: -20, h: 70, tx: 0, tz: -20, th: 70 };
+function toggleAerial() {
+  if (!playing || over) return;
+  aerial = !aerial;
+  document.body.classList.toggle('aerial', aerial);
+  if (aerial) {
+    aer.tx = aer.x = player.pos.x; aer.tz = aer.z = player.pos.z - 12;
+    aer.th = 70; aer.h = 30;
+    input.action = false;
+    ui.toast(isTouch ? '🦅 Visão aérea · arraste para mover · ➕➖ zoom' : '🦅 Visão aérea · mouse/WASD movem · roda dá zoom · Q volta', 'good');
+  } else {
+    player.pitch = -0.25;
+    camSnap = true;
+  }
+  sfx.click();
+}
+function aerialInput(dt: number, mx: number, my: number) {
+  const k = aer.h / 480;
+  const px = input.touch ? 1 / 0.0055 : 1 / 0.0022;
+  aer.tx -= input.lookX * px * k;
+  aer.tz -= input.lookY * px * k;
+  aer.tx += mx * dt * aer.h * 0.8;
+  aer.tz -= my * dt * aer.h * 0.8;
+  aer.tx = Math.max(-95, Math.min(95, aer.tx));
+  aer.tz = Math.max(-100, Math.min(60, aer.tz));
+}
+function aerialCamera(dt: number) {
+  const f = 1 - Math.exp(-dt * 6);
+  aer.x += (aer.tx - aer.x) * f; aer.z += (aer.tz - aer.z) * f; aer.h += (aer.th - aer.h) * f;
+  camera.position.set(aer.x, aer.h, aer.z + aer.h * 0.55);
+  camera.lookAt(aer.x, 0, aer.z);
 }
 
 function toggleFullscreen() {
@@ -462,7 +502,7 @@ const inters: Inter[] = [
   { pos: () => houseDoor, r: 3.2, label: () => (s.phase === 'day' && !over ? 'Começar a noite 🌙' : null), act: () => startNight() },
   ...PARCELS.map((p): Inter => {
     const pos = parcelSignPos(p.id);
-    return { pos: () => pos, r: 3.2, label: () => (farm.owned[p.id] ? null : `Comprar terreno ${fmt(parcelPrice(s.parcels.length))}`), act: () => buyParcel(p.id) };
+    return { pos: () => pos, r: 3.2, label: () => (farm.isNextParcel(p.id) ? `🏗️ Construir expansão ${fmt(parcelPrice(s.parcels.length))}` : null), act: () => buyParcel(p.id) };
   }),
 ];
 
@@ -537,11 +577,11 @@ function planNext() {
   const n = s.nights + 1;
   plan = planWave(n);
   laneView.set(plan.counts, false);
-  const lanes = Object.keys(plan.counts).map((id) => `${LMAP[id].arrow} ${LMAP[id].name} <b>${plan.counts[id]}</b>`).join(' · ');
-  const kinds = Object.keys(plan.kinds).map((k) => `${KIND_ICON[k]}${plan.kinds[k]}`).join(' ');
+  const lanes = Object.keys(plan.counts).map((id) => `<span class="wc lane">${LMAP[id].arrow} ${LMAP[id].name} <b>${plan.counts[id]}</b></span>`).join('');
+  const kinds = Object.keys(plan.kinds).map((k) => `<span class="wc">${KIND_ICON[k]} ${plan.kinds[k]}</span>`).join('');
   const newLane = lanesFor(n).find((l) => l.unlock === n && n > 1);
-  const mod = plan.mod ? `<div class="pmod">${MODS[plan.mod].name} — ${MODS[plan.mod].desc}</div>` : '';
-  ui.setPreview(`<div class="ptitle">📋 Próxima noite ${n}${newLane ? ` · <span class="new">NOVA ROTA: ${newLane.arrow} ${newLane.name}!</span>` : ''}</div><div>${lanes}</div><div class="pk">${kinds}</div>${mod}`);
+  const mod = plan.mod ? `<span class="wc mod" title="${MODS[plan.mod].desc}">${MODS[plan.mod].name}</span>` : '';
+  ui.setPreview(`<span class="wc ttl">📋 Noite ${n}</span>${newLane ? `<span class="wc new">NOVA ROTA ${newLane.arrow}</span>` : ''}${lanes}${kinds}${mod}`);
 }
 
 function laneOf(path: [number, number][]): string | null { for (const id in LMAP) if (LMAP[id].pts === path) return id; return null; }
@@ -601,7 +641,7 @@ function updatePhase(dt: number) {
     s.phaseT -= dt;
     if (s.phaseT <= 0) startNight();
     const p = 1 - Math.max(0, s.phaseT) / dayLen(s.nights);
-    visDay += (0.03 + 0.66 * p - visDay) * Math.min(1, dt * 1.5);
+    visDay += (0.1 + 0.58 * p - visDay) * Math.min(1, dt * 1.5);
   } else {
     spawnT -= dt;
     const n = s.nights + 1;
@@ -621,7 +661,7 @@ function updatePhase(dt: number) {
       if (z) sfx.groan(z.kind === 'colossus' || z.kind === 'brute');
     }
   }
-  if (s.phase === 'day' && visDay > 0.9) visDay = 0.03;
+  if (s.phase === 'day' && visDay > 0.9) visDay = 0.06;
   s.dayTime = visDay;
   // vida do jogador
   hurtT += dt;
@@ -839,6 +879,11 @@ function handleKeys() {
     if (consume('WheelUp')) camDist = Math.max(6, camDist - 1.2);
   }
   if (consume('KeyV')) toggleCam();
+  if (consume('KeyQ')) toggleAerial();
+  if (aerial) {
+    if (consume('WheelDown')) aer.th = Math.min(140, aer.th * 1.15);
+    if (consume('WheelUp')) aer.th = Math.max(22, aer.th / 1.15);
+  }
   if (consume('KeyK')) ui.togglePanel('skills');
   if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : 7));
   if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : 7; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
@@ -905,7 +950,8 @@ function frame(now: number) {
     updatePhase(dt);
     handleKeys();
     const [mx, my] = input.enabled ? moveVec() : [0, 0];
-    if (input.enabled) {
+    if (aerial) aerialInput(dt, mx, my);
+    else if (input.enabled) {
       if (s.inTractor) {
         if (s.tpCam) {
           camOrbit -= input.lookX * 1.4;
@@ -919,7 +965,8 @@ function frame(now: number) {
     }
     input.lookX = input.lookY = 0;
 
-    if (s.inTractor) {
+    if (aerial) { aerialCamera(dt); view.setHighlight([], 0); ui.setTileInfo(''); walls.setGhost(-1, 0, 0, 0, false); }
+    else if (s.inTractor) {
       tractor.update(dt, my, mx, tractorSpeed(), sk('m4') > 0);
       const seat = tractor.seatWorld();
       if (s.tpCam) {
@@ -978,7 +1025,7 @@ function frame(now: number) {
     if (hudDirty && hudT <= 0) { hudDirty = false; hudT = 0.1; ui.updateHud(); ui.refreshPanel(); }
     if (goalT <= 0) { goalT = 0.4; checkGoal(); }
     if (saveT <= 0) { saveT = 10; doSave(); }
-    if (clockT <= 0) { clockT = 0.25; ui.setPhase(s.phase, s.nights + 1, s.phaseT, spawnQueue.length + horde.alive(), world.rainF > 0.3); ui.setVitals(playerHp / playerMax(), s.baseHp / baseMax()); hudDirty = true; }
+    if (clockT <= 0) { clockT = 0.25; ui.setPhase(s.phase, s.nights + 1, s.phaseT, spawnQueue.length + horde.alive(), world.rainF > 0.3, s.phase === 'day' ? 1 - s.phaseT / dayLen(s.nights) : 1 - (spawnQueue.length + horde.alive()) / Math.max(1, waveTotal)); ui.setVitals(playerHp / playerMax(), s.baseHp / baseMax(), playerHp, s.baseHp); hudDirty = true; }
     if (sparkleT <= 0) {
       sparkleT = 0.08;
       const t = farm.randomRipe();
@@ -1020,12 +1067,19 @@ function frame(now: number) {
   renderer.toneMappingExposure = 1.05 + world.night * 0.12;
   {
     const on = world.night > 0.3 && playing;
-    flashlight.intensity = on ? world.night * (s.inTractor ? 160 : 55) : 0;
-    if (s.inTractor) {
+    flashlight.intensity = on ? world.night * (aerial ? 900 : s.inTractor ? 160 : 55) : 0;
+    if (aerial) {
+      flashlight.position.copy(camera.position);
+      flashlight.target.position.set(aer.x, 0, aer.z);
+      flashlight.angle = 0.7;
+      flashlight.distance = 260;
+    } else if (s.inTractor) {
+      flashlight.distance = 45;
       flashlight.position.copy(tractor.group.localToWorld(new THREE.Vector3(0, 2.2, -2.6)));
       flashlight.target.position.copy(tractor.group.localToWorld(new THREE.Vector3(0, 0, -16)));
       flashlight.angle = 0.75;
     } else {
+      flashlight.distance = 45;
       camera.getWorldDirection(ray);
       flashlight.position.copy(camera.position).addScaledVector(ray, 0.3);
       flashlight.position.y -= 0.25;
@@ -1050,7 +1104,7 @@ function frame(now: number) {
 
   renderer.clear();
   renderer.render(scene, camera);
-  if (playing && !s.inTractor) { renderer.clearDepth(); renderer.render(vmScene, camera); }
+  if (playing && !s.inTractor && !aerial) { renderer.clearDepth(); renderer.render(vmScene, camera); }
 }
 renderer.setAnimationLoop(frame);
 
