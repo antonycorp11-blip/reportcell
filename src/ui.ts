@@ -20,7 +20,7 @@ export interface Handlers {
   aerial(): void; zoom(d: number): void;
 }
 let H: Handlers;
-let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' = '';
+let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' | 'hub' = '';
 let selSkill = 'a1';
 let shopTab: Tab | 'land' | 'legacy' = 'def';
 let welcomeHtml = '';
@@ -39,6 +39,7 @@ export function initUI(h: Handlers) {
   tap($('btnCam'), () => H.toggleCam());
   tap($('btnNight'), () => H.startNight());
   tap($('btnAerial'), () => H.aerial());
+  tap($('btnHub'), () => togglePanel('hub'));
   tap($('btnAerialBack'), () => H.aerial());
   tap($('btnZoomIn'), () => H.zoom(-1));
   tap($('btnZoomOut'), () => H.zoom(1));
@@ -52,6 +53,7 @@ export function initUI(h: Handlers) {
       case 'close': closePanel(); break;
       case 'restart': H.restart(); return;
       case 'node': selSkill = v; break;
+      case 'go': openPanel(v as typeof panel); return;
       case 'learn': H.learn(v); break;
       case 'tab': shopTab = v as Tab; renderPanel(); break;
       case 'buy': H.buy(v); break;
@@ -93,7 +95,7 @@ export function togglePanel(p: typeof panel) { if (panel === p) closePanel(); el
 
 let lastPanelRender = 0;
 export function refreshPanel(force = false) {
-  if (!panel || panel === 'welcome' || panel === 'menu') return;
+  if (!panel || panel === 'welcome' || panel === 'menu' || panel === 'hub') return;
   const now = performance.now();
   if (!force && now - lastPanelRender < 300) return;
   renderPanel();
@@ -167,6 +169,16 @@ function renderPanel() {
   } else if (panel === 'skills') {
     head = `🌟 Habilidades <span class="pts">${freePoints()} ponto${freePoints() === 1 ? '' : 's'}</span>`;
     content = skillTree();
+  } else if (panel === 'hub') {
+    head = '☰ Fazenda';
+    const fp = freePoints();
+    const used = siloUsed(), cap = siloCap();
+    content = `<div class="hub">
+      <button data-a="go" data-v="shop"><span>🛒</span><b>Loja</b><small>Defesas, melhorias, expansões</small></button>
+      <button data-a="go" data-v="skills"><span>⭐</span><b>Habilidades</b><small>${fp > 0 ? `<em>${fp} ponto${fp > 1 ? 's' : ''} livre${fp > 1 ? 's' : ''}!</em>` : 'Árvore de talentos'}</small></button>
+      <button data-a="go" data-v="market"><span>📈</span><b>Mercado</b><small>Silo ${used}/${cap}</small></button>
+      <button data-a="go" data-v="menu"><span>⚙️</span><b>Ajustes</b><small>Som, gráficos, dificuldade</small></button>
+    </div>`;
   } else if (panel === 'over') {
     head = '💀 A fazenda caiu';
     content = welcomeHtml;
@@ -254,6 +266,8 @@ export function updateHud() {
   }
   ($('canBar') as HTMLElement).style.width = (s.can / canCap()) * 100 + '%';
   $('canTxt').textContent = `${s.can}/${canCap()}`;
+  const cn = document.getElementById('canNum');
+  if (cn) { cn.textContent = String(s.can); cn.classList.toggle('empty', s.can === 0); }
   const used = siloUsed(), cap = siloCap();
   ($('siloBar') as HTMLElement).style.width = Math.min(100, (used / cap) * 100) + '%';
   $('mSilo').classList.toggle('full', used >= cap);
@@ -286,6 +300,7 @@ export function setPreview(html: string) {
 }
 
 export function setVitals(hp: number, base: number, hpV = 0, baseV = 0) {
+  $('mHp').classList.toggle('hidden', hp >= 0.999);
   $('hpTxt').textContent = String(Math.ceil(hpV));
   $('baseTxt').textContent = String(Math.ceil(baseV));
   ($('hpBar') as HTMLElement).style.width = Math.max(0, hp) * 100 + '%';
@@ -320,7 +335,7 @@ export function renderToolbar(inTractor: boolean) {
   if (key !== toolKey) {
     toolKey = key;
     const tb = $('toolbar');
-    tb.innerHTML = list.map((t) => `<button class="slot ${t.i === sel ? 'on' : ''}" data-i="${t.i}"><span class="ti">${t.icon}</span><span class="tn">${t.name}</span><span class="tk">${t.i + 1}</span></button>`).join('');
+    tb.innerHTML = list.map((t) => `<button class="slot ${t.i === sel ? 'on' : ''}" data-i="${t.i}"><span class="ti">${t.icon}</span><span class="tn">${t.name}</span><span class="tk">${t.i + 1}</span>${!inTractor && t.i === 2 ? '<i id="canNum" class="cnum"></i>' : ''}</button>`).join('');
     tb.querySelectorAll('button').forEach((b) => tap(b as HTMLElement, () => H.tool(Number((b as HTMLElement).dataset.i))));
   }
   renderCropbar(inTractor);

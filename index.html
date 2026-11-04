@@ -27,22 +27,20 @@
           <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="trk"/><circle id="xpRing" cx="22" cy="22" r="19" class="val"/></svg>
           <b id="lvlNum">1</b>
         </div>
-        <div class="pinfo">
-          <div id="money">$0</div>
-          <div id="era"></div>
-        </div>
-        <i id="xpBar" class="hidden"></i>
+        <div id="money">$0</div>
+        <i id="xpBar" class="hidden"></i><span id="era" class="hidden"></span>
       </div>
-      <div id="vitals" class="glass">
-        <div class="vrow" id="mBase"><span class="vi">🏠</span><div class="vbar base"><i id="baseBar"></i></div><b id="baseTxt"></b></div>
-        <div class="vrow" id="mHp"><span class="vi">❤️</span><div class="vbar hp"><i id="hpBar"></i></div><b id="hpTxt"></b></div>
-        <div class="vrow" id="mCan"><span class="vi">💧</span><div class="vbar water"><i id="canBar"></i></div><b id="canTxt"></b></div>
-        <div class="vrow" id="mSilo"><span class="vi">🏚️</span><div class="vbar silo"><i id="siloBar"></i></div><b id="siloTxt"></b></div>
+      <div id="vitals">
+        <div class="vrow" id="mBase"><span class="vi">🏠</span><div class="vbar base"><i id="baseBar"></i></div></div>
+        <div class="vrow" id="mHp"><span class="vi">❤️</span><div class="vbar hp"><i id="hpBar"></i></div></div>
+        <b id="baseTxt" class="hidden"></b><b id="hpTxt" class="hidden"></b>
+        <div class="hidden" id="mCan"><i id="canBar"></i><b id="canTxt"></b></div>
+        <div class="hidden" id="mSilo"><i id="siloBar"></i><b id="siloTxt"></b></div>
       </div>
-      <div id="goal" class="glass">
+      <div id="goal">
         <div class="gTitle"><span class="gi">🎯</span><span id="goalText"></span></div>
         <div class="vbar goalb"><i id="goalBar"></i></div>
-        <div id="goalReward"></div>
+        <div id="goalReward" class="hidden"></div>
       </div>
     </div>
 
@@ -53,10 +51,10 @@
         <div class="ph">
           <b id="clockTxt"></b>
           <div class="vbar phaseb"><i id="phaseBar"></i></div>
+          <div id="wavePreview" class="hidden"></div>
         </div>
-        <button id="btnNight">🌙 Começar</button>
+        <button id="btnNight">🌙</button>
       </div>
-      <div id="wavePreview" class="hidden"></div>
     </div>
 
     <!-- canto superior direito -->
@@ -64,10 +62,8 @@
       <div id="menuBtns">
         <button class="rb hidden" id="btnCam" title="Câmera (V)">🎥</button>
         <button class="rb" id="btnAerial" title="Visão aérea (Q)">🦅</button>
-        <button class="rb" id="btnSkills" title="Habilidades (K)">⭐<i id="skBadge" class="badge hidden">0</i></button>
-        <button class="rb" id="btnShop" title="Loja (B)">🛒</button>
-        <button class="rb" id="btnMarket" title="Mercado (M)">📈</button>
-        <button class="rb" id="btnMenu" title="Menu">⚙️</button>
+        <button class="rb" id="btnHub" title="Menu">☰<i id="skBadge" class="badge hidden">0</i></button>
+        <span class="hidden"><button id="btnSkills"></button><button id="btnShop"></button><button id="btnMarket"></button><button id="btnMenu"></button></span>
       </div>
       <canvas id="minimap"></canvas>
     </div>

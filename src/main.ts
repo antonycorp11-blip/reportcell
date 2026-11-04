@@ -577,11 +577,11 @@ function planNext() {
   const n = s.nights + 1;
   plan = planWave(n);
   laneView.set(plan.counts, false);
-  const lanes = Object.keys(plan.counts).map((id) => `<span class="wc lane">${LMAP[id].arrow} ${LMAP[id].name} <b>${plan.counts[id]}</b></span>`).join('');
-  const kinds = Object.keys(plan.kinds).map((k) => `<span class="wc">${KIND_ICON[k]} ${plan.kinds[k]}</span>`).join('');
+  const lanes = Object.keys(plan.counts).map((id) => `${LMAP[id].arrow}<b>${plan.counts[id]}</b>`).join(' ');
+  void KIND_ICON;
   const newLane = lanesFor(n).find((l) => l.unlock === n && n > 1);
-  const mod = plan.mod ? `<span class="wc mod" title="${MODS[plan.mod].desc}">${MODS[plan.mod].name}</span>` : '';
-  ui.setPreview(`<span class="wc ttl">📋 Noite ${n}</span>${newLane ? `<span class="wc new">NOVA ROTA ${newLane.arrow}</span>` : ''}${lanes}${kinds}${mod}`);
+  const mod = plan.mod ? ` · <span class="pmod">${MODS[plan.mod].name}</span>` : '';
+  ui.setPreview(`🧟 ${lanes}${newLane ? ` <span class="pnew">nova rota ${newLane.arrow}</span>` : ''}${mod}`);
 }
 
 function laneOf(path: [number, number][]): string | null { for (const id in LMAP) if (LMAP[id].pts === path) return id; return null; }
@@ -1002,7 +1002,7 @@ function frame(now: number) {
       if (smokeT <= 0) { smokeT = 0.12; const e = tractor.exhaustWorld(); fx.spawn(e.x, e.y, e.z, 0x8a8a8a, 1, 0.2, 1.5 + Math.abs(tractor.speed) * 0.2, -0.6, 1.4); }
       ui.setTileInfo('');
     } else {
-      const sp = deadT > 0 ? 0 : walkSpeed() * (input.sprint ? 1.6 : 1);
+      const sp = deadT > 0 ? 0 : walkSpeed() * (input.sprint || Math.hypot(input.joyX, input.joyY) > 0.93 ? 1.6 : 1);
       player.update(dt, mx, my, sp);
       cooldown -= dt;
       if (sk('m5') && s.can < canCap()) { canAcc += dt * 0.6; if (canAcc >= 1) { canAcc -= 1; s.can++; hudDirty = true; } }
