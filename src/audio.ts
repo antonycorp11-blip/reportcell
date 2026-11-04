@@ -67,6 +67,19 @@ export const sfx = {
   chirp() { const f = 2200 + Math.random() * 1500; tone(f, 0.08, 'sine', 0.03, f * 1.4); tone(f * 1.1, 0.07, 'sine', 0.025, f * 0.9, 0.12); },
   door() { tone(180, 0.2, 'triangle', 0.15, 90); },
   combo() { tone(1047, 0.1, 'square', 0.05); tone(1568, 0.25, 'triangle', 0.1, 0, 0.08); },
+  shoot(k: number) {
+    if (k === 2) { tone(1800, 0.18, 'sawtooth', 0.04, 300); noise(0.12, 0.05, 4000, 'highpass'); }
+    else if (k === 1) { tone(300, 0.15, 'sine', 0.08, 120); }
+    else if (k === 3) { tone(700, 0.06, 'square', 0.05, 220); noise(0.06, 0.12, 2500, 'bandpass'); }
+    else { tone(520, 0.05, 'square', 0.04, 260); }
+  },
+  whack() { noise(0.12, 0.35, 900); tone(140, 0.12, 'triangle', 0.25, 70); },
+  swing() { noise(0.15, 0.12, 1800, 'bandpass'); },
+  splat() { noise(0.18, 0.25, 600); tone(180, 0.15, 'sine', 0.12, 60); },
+  boom() { noise(0.9, 0.6, 400); tone(80, 0.7, 'sine', 0.4, 30); },
+  groan(big: boolean) { const f = big ? 70 : 110 + Math.random() * 40; tone(f, 0.9, 'sawtooth', 0.05, f * 0.7); tone(f * 1.5, 0.8, 'sine', 0.03, f); },
+  night() { tone(110, 2.2, 'sawtooth', 0.06, 82); tone(165, 2.2, 'sine', 0.05, 123); tone(55, 2.5, 'sine', 0.12); },
+  gameover() { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.5, 'triangle', 0.14, 0, i * 0.28)); },
 };
 
 export function engine(on: boolean, speed = 0) {

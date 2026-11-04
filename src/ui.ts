@@ -15,11 +15,12 @@ export interface Handlers {
   open(): void; close(): void;
   setting(k: string, v: unknown): void; reset(): void; fullscreen(): void;
   learn(id: string): void; toggleCam(): void;
+  startNight(): void; restart(): void;
 }
 let H: Handlers;
-let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' = '';
+let panel: '' | 'shop' | 'market' | 'menu' | 'welcome' | 'skills' | 'over' = '';
 let selSkill = 'a1';
-let shopTab: Tab | 'land' | 'legacy' = 'agro';
+let shopTab: Tab | 'land' | 'legacy' = 'def';
 let welcomeHtml = '';
 
 const tap = (el: HTMLElement, f: (e: Event) => void) => {
@@ -34,14 +35,16 @@ export function initUI(h: Handlers) {
   tap($('btnMenu'), () => openPanel('menu'));
   tap($('btnSkills'), () => openPanel('skills'));
   tap($('btnCam'), () => H.toggleCam());
+  tap($('btnNight'), () => H.startNight());
   $('panelWrap').addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
-    if (t.id === 'panelWrap') { closePanel(); return; }
+    if (t.id === 'panelWrap') { if (panel !== 'over') closePanel(); return; }
     const b = t.closest('[data-a]') as HTMLElement | null;
     if (!b || (b as HTMLButtonElement).disabled) return;
     const a = b.dataset.a!, v = b.dataset.v!;
     switch (a) {
       case 'close': closePanel(); break;
+      case 'restart': H.restart(); return;
       case 'node': selSkill = v; break;
       case 'learn': H.learn(v); break;
       case 'tab': shopTab = v as Tab; renderPanel(); break;
@@ -67,7 +70,7 @@ export function initUI(h: Handlers) {
 export const isPanelOpen = () => panel !== '';
 
 export function openPanel(p: typeof panel, html = '') {
-  if (p === 'welcome') welcomeHtml = html;
+  if (p === 'welcome' || p === 'over') welcomeHtml = html;
   panel = p;
   $('panelWrap').classList.remove('hidden');
   H.open();
@@ -99,7 +102,7 @@ function renderPanel() {
   const s = game.s;
   if (panel === 'shop') {
     head = '🛒 Loja da Fazenda';
-    const T: [string, string][] = [['agro', '🌱 Agronomia'], ['mec', '🔧 Mecânica'], ['com', '💰 Comércio'], ['auto', '🤖 Automação'], ['build', '🏗️ Construções'], ['land', '🗺️ Terras'], ['legacy', '🌳 Legado']];
+    const T: [string, string][] = [['def', '🛡️ Defesa'], ['agro', '🌱 Agronomia'], ['mec', '🔧 Mecânica'], ['com', '💰 Comércio'], ['auto', '🤖 Automação'], ['build', '🏗️ Construções'], ['land', '🗺️ Terras'], ['legacy', '🌳 Legado']];
     tabs = `<div class="tabs scroll">${T.map(([k, n]) => `<button data-a="tab" data-v="${k}" class="${shopTab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     if (shopTab === 'land') content = landTab();
     else if (shopTab === 'legacy') content = legacyTab();
@@ -156,13 +159,16 @@ function renderPanel() {
   } else if (panel === 'skills') {
     head = `🌟 Habilidades <span class="pts">${freePoints()} ponto${freePoints() === 1 ? '' : 's'}</span>`;
     content = skillTree();
+  } else if (panel === 'over') {
+    head = '💀 A fazenda caiu';
+    content = welcomeHtml;
   } else if (panel === 'welcome') {
     head = '🌅 Bem-vindo de volta!';
     content = welcomeHtml + '<button class="big" data-a="close">Continuar</button>';
   }
   const kind = panel + '|' + (panel === 'shop' ? shopTab : '');
   el.dataset.kind = panel;
-  el.innerHTML = `<div class="phead"><h2>${head}</h2><button class="x" data-a="close">✕</button></div>${tabs}<div class="pbody scroll">${content}</div>`;
+  el.innerHTML = `<div class="phead"><h2>${head}</h2>${panel === 'over' ? '' : '<button class="x" data-a="close">✕</button>'}</div>${tabs}<div class="pbody scroll">${content}</div>`;
   if (kind === prevKind) (el.querySelector('.pbody') as HTMLElement).scrollTop = scroll;
 }
 
@@ -247,6 +253,31 @@ export function updateHud() {
   $('btnCam').classList.toggle('hidden', !s.inTractor);
 }
 
+export function setPhase(phase: 'day' | 'night', n: number, left: number, zombies: number, raining: boolean) {
+  const night = phase === 'night';
+  document.body.classList.toggle('isNight', night);
+  $('clockIcon').textContent = night ? '🧟' : raining ? '🌧️' : '☀️';
+  const m = Math.floor(Math.max(0, left) / 60), sec = Math.floor(Math.max(0, left) % 60);
+  $('clockTxt').textContent = night ? `Noite ${n} · ${zombies} restantes` : `Dia ${n} · noite em ${m}:${String(sec).padStart(2, '0')}`;
+  $('btnNight').classList.toggle('hidden', night);
+}
+
+export function setVitals(hp: number, base: number) {
+  ($('hpBar') as HTMLElement).style.width = Math.max(0, hp) * 100 + '%';
+  ($('baseBar') as HTMLElement).style.width = Math.max(0, base) * 100 + '%';
+  $('mBase').classList.toggle('danger', base < 0.35);
+  $('mHp').classList.toggle('danger', hp < 0.35);
+}
+
+let hurtV = 0;
+export function hurt(k: number) {
+  hurtV = Math.min(1, hurtV + k);
+  const el = $('hurt');
+  el.style.opacity = String(hurtV);
+  clearTimeout((hurt as any).t);
+  (hurt as any).t = setTimeout(function fade() { hurtV *= 0.8; el.style.opacity = String(hurtV); if (hurtV > 0.02) (hurt as any).t = setTimeout(fade, 50); else el.style.opacity = '0'; }, 120);
+}
+
 export function setClock(dayTime: number, day: number, raining: boolean) {
   const h = dayTime < 0.7 ? 6 + (dayTime / 0.7) * 12 : 18 + ((dayTime - 0.7) / 0.3) * 12;
   const hh = Math.floor(h) % 24, mm = Math.floor((h % 1) * 6) * 10;
@@ -258,7 +289,7 @@ export function setClock(dayTime: number, day: number, raining: boolean) {
 let toolKey = '';
 export function renderToolbar(inTractor: boolean) {
   const s = game.s;
-  const list = inTractor ? IMPLEMENTS : HAND_TOOLS.filter((_, i) => i < 4 || lv('multi'));
+  const list = inTractor ? IMPLEMENTS : HAND_TOOLS.filter((_, i) => i !== 5 || lv('multi'));
   const sel = inTractor ? s.implement : s.tool;
   const key = `${inTractor}|${sel}|${list.length}`;
   if (key !== toolKey) {
@@ -273,7 +304,7 @@ export function renderToolbar(inTractor: boolean) {
 let cropKey = '';
 export function renderCropbar(inTractor: boolean) {
   const s = game.s;
-  const show = inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 4;
+  const show = inTractor ? s.implement === 1 : s.tool === 1 || s.tool === 5;
   const cb = $('cropbar');
   cb.classList.toggle('hidden', !show);
   const key = `${show}|${s.crop}|${s.level}`;

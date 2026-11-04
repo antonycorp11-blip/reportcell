@@ -18,7 +18,21 @@ export const T = {
   w: new Float32Array(N),        // água 0..1
   f: new Float32Array(N),        // fertilidade
   l: new Int8Array(N).fill(-1),  // última cultura
+  h: new Float32Array(N),        // vida da planta
+  p: new Float32Array(N),        // pulso de ataque (visual)
 };
+export const CROP_HP = [40, 70, 55, 300, 60, 90];
+export const tileMaxHp = (t: number) => CROP_HP[T.c[t]] * (0.3 + 0.7 * T.g[t]);
+
+/** Zumbi comendo a planta. Retorna true se destruiu. */
+export function damageTile(t: number, d: number): boolean {
+  if (T.s[t] !== 2) return false;
+  T.h[t] -= d;
+  T.p[t] = Math.max(T.p[t], -0.6);
+  dirty = true;
+  if (T.h[t] <= 0) { T.s[t] = 3; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0; return true; }
+  return false;
+}
 export const owned = new Uint8Array(PCOUNT);
 let dirty = true;
 export let rain = 0;
@@ -58,6 +72,7 @@ export function deserialize(d: TileSave | null) {
   resetTiles();
   if (!d || !d.s || d.s.length !== N) return;
   T.s.set(d.s); T.c.set(d.c); T.g.set(d.g); T.w.set(d.w); T.f.set(d.f); T.l.set(d.l);
+  for (let t = 0; t < N; t++) if (T.s[t] === 2) T.h[t] = tileMaxHp(t);
   dirty = true;
 }
 
@@ -91,7 +106,7 @@ export function plant(t: number, c: number): 'ok' | 'money' | null {
   const C = CROPS[c];
   if (game.s.money < C.seed) return 'money';
   game.s.money -= C.seed;
-  T.s[t] = 2; T.c[t] = c; T.g[t] = 0;
+  T.s[t] = 2; T.c[t] = c; T.g[t] = 0; T.h[t] = CROP_HP[c] * 0.3;
   game.s.stats.planted++;
   if (C.id === 'corn') game.s.stats.corn++;
   dirty = true;
@@ -151,8 +166,9 @@ export function step(dt: number) {
       T.w[t] = w < 0 ? 0 : w > 1 ? 1 : w;
       if (s === 2 && T.g[t] < 1) {
         const C = CROPS[T.c[t]];
-        T.g[t] += (dt / C.time) * gm * (0.3 + 0.7 * Math.min(1, T.w[t] * 2.5));
-        if (T.g[t] >= 1) T.g[t] = 1;
+        const dg = (dt / C.time) * gm * (0.3 + 0.7 * Math.min(1, T.w[t] * 2.5));
+        T.g[t] = Math.min(1, T.g[t] + dg);
+        T.h[t] = Math.min(tileMaxHp(t), T.h[t] + CROP_HP[T.c[t]] * 0.7 * dg);
       }
     }
   }
@@ -274,7 +290,10 @@ export class FarmView {
         const sy = 0.12 + 0.88 * g;
         const sxz = 0.35 + 0.65 * Math.min(1, g * 1.4);
         q.setFromAxisAngle(up, ((t * 7) % 4) * (Math.PI / 2));
-        m4.compose(pv.set(x, 0.1, z), q, sv.set(sxz, ripe ? 1.04 : sy, sxz));
+        const pu = T.p[t];
+        const ps = 1 + Math.max(0, pu) * 0.22;
+        const eat = pu < 0 ? 1 + pu * 0.25 : 1;
+        m4.compose(pv.set(x, 0.1, z), q, sv.set(sxz * ps * eat, (ripe ? 1.04 : sy) * (1 + Math.max(0, pu) * 0.12) * eat, sxz * ps * eat));
         const mesh = this.crops[c];
         mesh.setMatrixAt(nc[c], m4);
         const k = Math.max(0, Math.min(1, (g - 0.45) / 0.55));

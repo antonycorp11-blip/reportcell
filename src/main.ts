@@ -16,8 +16,10 @@ import { uTime } from './gfx';
 import * as ui from './ui';
 import { Life } from './life';
 import { learn, SKMAP } from './skills';
+import { Horde, ZDEF, type Zombie, type ZKind } from './zombies';
+import { Defense } from './defense';
+import { DAY_LEN, baseMax, playerMax, addXp } from './state';
 
-const DAY = 480;
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (isTouch) document.body.classList.add('touch');
@@ -53,6 +55,15 @@ vmScene.add(player.view);
 const tractor = new Tractor(scene);
 const life = new Life(scene, fx);
 life.onUnlock = (name) => { if (playing) { ui.banner('✨ A fazenda evoluiu!', name); sfx.level(); } };
+const horde = new Horde(scene, fx);
+const defense = new Defense(scene, horde, fx);
+defense.ctx = {
+  kill: (z, by) => onKill(z, by),
+  boom: (x, z) => boom(x, z),
+  shot: (k) => { if (shotT <= 0) { shotT = 0.07; sfx.shoot(k); } },
+};
+let playerHp = 100, hurtT = 10, deadT = 0, over = false, shotT = 0, baseAlertT = 0, groanT = 3, shake = 0;
+let spawnQueue: ZKind[] = [], spawnT = 0, waveTotal = 0, visDay = 0.05;
 
 // ------------------------------------------------------------------ estado inicial
 function applyState() {
@@ -65,7 +76,10 @@ function applyState() {
   tractor.setMode(s.implement, implWidth());
   player.pos.set(s.px, 0, s.pz);
   player.yaw = s.yaw;
-  if (s.tool === 4 && !lv('multi')) s.tool = 0;
+  if (s.tool === 5 && !lv('multi')) s.tool = 0;
+  playerHp = playerMax();
+  if (s.phase === 'night') { s.phase = 'day'; s.phaseT = 20; }
+  horde.clear(); defense.reset();
   player.setTool(s.tool);
   if (s.inTractor && !lv('tractor')) s.inTractor = false;
   player.showTool(!s.inTractor);
@@ -205,7 +219,9 @@ ui.initUI({
   },
   toggleCam,
   tool: selectTool,
-  crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); } },
+  crop(i) { if (s.level >= CROPS[i].level) { s.crop = i; sfx.click(); ui.renderCropbar(s.inTractor); ui.toast(`${CROPS[i].icon} <b>${CROPS[i].def}</b> · ${CROPS[i].role}`); } },
+  startNight: () => startNight(),
+  restart: () => restart(),
   open() { input.enabled = false; input.action = false; if (document.pointerLockElement) document.exitPointerLock(); },
   close() { input.enabled = true; if (!isTouch && playing) canvas.requestPointerLock?.(); },
   setting(k, v) {
@@ -222,7 +238,7 @@ function selectTool(i: number) {
     s.implement = i;
     tractor.setMode(i, implWidth());
   } else {
-    if (i >= HAND_TOOLS.length || (i === 4 && !lv('multi'))) return;
+    if (i >= HAND_TOOLS.length || (i === 5 && !lv('multi'))) return;
     s.tool = i;
     player.setTool(i);
   }
@@ -333,13 +349,14 @@ function applyTool(t: number, action: number, fromTractor: boolean): boolean {
 const actionSfx = [sfx.plow, sfx.plant, sfx.water, () => { /* colheita tem som próprio */ }];
 let cooldown = 0, canAcc = 0;
 function useHand() {
+  if (s.tool === 4) { attack(); return; }
   const t0 = targetTile();
   if (t0 < 0) return;
   if (!isOwned(t0)) { ui.toast('🪧 Este terreno está à venda — compre na placa'); cooldown = 0.5; return; }
   const tiles = farm.area(t0, lv('tool'));
   const done = new Set<number>();
   for (const t of tiles) {
-    const a = s.tool === 4 ? smartAction(t) : s.tool;
+    const a = s.tool === 5 ? smartAction(t) : s.tool;
     if (a < 0) continue;
     if (applyTool(t, a, false)) done.add(a);
   }
@@ -361,7 +378,7 @@ function tileInfo(t: number): string {
   if (st === 3) return '🌾 Restolho — are de novo ⛏️' + fert;
   if (st === 1) return '🟫 Solo arado — plante 🌱' + w + fert;
   const C = CROPS[T.c[t]];
-  if (T.g[t] >= 1) return `✅ ${C.icon} ${C.name} pronto para colher!`;
+  if (T.g[t] >= 1) return s.phase === 'night' ? `${C.icon} ${C.def} · ❤️ ${Math.ceil(T.h[t])}` : `✅ ${C.icon} ${C.def} pronto · colha 💰 ou deixe defender 🌙`;
   return `${C.icon} ${C.name} ${Math.floor(T.g[t] * 100)}%${w}${T.w[t] < 0.1 ? ' · com sede!' : ''}${fert}`;
 }
 
@@ -410,19 +427,13 @@ const inters: Inter[] = [
   { pos: () => POS.tractor, r: 3, label: () => (lv('tractor') ? null : `Comprar trator ${fmt(upCost(UPMAP.tractor, 0))}`), act: () => buyUpgrade('tractor') },
   { pos: () => millSignPos, r: 3.5, label: () => (lv('mill') ? null : `Construir moinho ${fmt(upCost(UPMAP.mill, 0))}`), act: () => buyUpgrade('mill') },
   { pos: () => pressSignPos, r: 3.5, label: () => (lv('press') ? null : `Construir prensa ${fmt(upCost(UPMAP.press, 0))}`), act: () => buyUpgrade('press') },
-  { pos: () => houseDoor, r: 3, label: () => (world.night > 0.5 ? 'Dormir até amanhecer 🛏️' : null), act: sleep },
+  { pos: () => houseDoor, r: 3.2, label: () => (s.phase === 'day' && !over ? 'Começar a noite 🌙' : null), act: () => startNight() },
   ...PARCELS.map((p): Inter => {
     const pos = parcelSignPos(p.id);
     return { pos: () => pos, r: 3.2, label: () => (farm.owned[p.id] ? null : `Comprar terreno ${fmt(parcelPrice(s.parcels.length))}`), act: () => buyParcel(p.id) };
   }),
 ];
 
-function sleep() {
-  const toMorning = (1 - s.dayTime) * DAY;
-  runSim(toMorning, 1);
-  ui.banner('🌅 Bom dia!', 'Suas plantas cresceram durante a noite');
-  sfx.level();
-}
 
 let currentInter: Inter | null = null;
 function findInter() {
@@ -443,7 +454,7 @@ bus.on('level', (l: number) => {
   s.money += reward; s.totalEarned += reward;
   ui.invalidateBars();
   if (offline) return;
-  const unlocks = CROPS.filter((c) => c.level === l).map((c) => `${c.icon} ${c.name}`);
+  const unlocks = CROPS.filter((c) => c.level === l).map((c) => `${c.icon} ${c.def}`);
   ui.banner(`⭐ Nível ${l}!`, `+${fmt(reward)} · +1 ponto de habilidade ⭐${unlocks.length ? ' · Desbloqueado: ' + unlocks.join(', ') : ' · Novas melhorias na loja'}`);
   sfx.level();
   for (let i = 0; i < 6; i++) {
@@ -456,6 +467,230 @@ bus.on('level', (l: number) => {
 let hudDirty = true;
 bus.on('hud', () => { hudDirty = true; });
 bus.on('order', () => { if (!offline) ui.toast('📦 Novo pedido especial no mercado!'); });
+
+// ------------------------------------------------------------------ apocalipse: ondas, combate e sobrevivência
+function buildWave(n: number): ZKind[] {
+  const total = Math.min(150, Math.round(5 + n * 3.3));
+  const out: ZKind[] = [];
+  for (let i = 0; i < total; i++) {
+    const r = Math.random();
+    let k: ZKind = 'walker';
+    if (n >= 2 && r < 0.2) k = 'runner';
+    else if (n >= 3 && r < 0.3) k = 'brute';
+    else if (n >= 4 && r < 0.4) k = 'digger';
+    else if (n >= 5 && r < 0.5) k = 'crow';
+    out.push(k);
+  }
+  if (n % 5 === 0) for (let b = 0; b < n / 5; b++) out.splice(Math.floor(total * (0.5 + b * 0.1)), 0, 'colossus');
+  return out;
+}
+
+function spawnOne(kind: ZKind) {
+  const n = s.nights + 1;
+  const edges = ['n'];
+  if (n >= 3) edges.push('e', 'w');
+  if (n >= 6) edges.push('s');
+  const e = kind === 'colossus' ? 'n' : edges[(Math.random() * edges.length) | 0];
+  let x = 0, z = 0;
+  if (e === 'n') { x = -40 + Math.random() * 80; z = -93; }
+  else if (e === 'e') { x = 91; z = -70 + Math.random() * 90; }
+  else if (e === 'w') { x = -91; z = -70 + Math.random() * 90; }
+  else { x = -6 + Math.random() * 12; z = 59; }
+  horde.spawn(kind, x, z, 1 + 0.13 * (n - 1));
+}
+
+function startNight() {
+  if (s.phase === 'night' || over) return;
+  s.phase = 'night';
+  const n = s.nights + 1;
+  spawnQueue = buildWave(n);
+  waveTotal = spawnQueue.length;
+  spawnT = 3;
+  ui.closePanel();
+  ui.banner(`🌙 Noite ${n}`, n % 5 === 0 ? '⚠️ Um COLOSSO se aproxima!' : `${waveTotal} zumbis a caminho · suas plantas ganharam vida!`);
+  sfx.night();
+  hudDirty = true;
+}
+
+function endNight() {
+  s.phase = 'day';
+  s.phaseT = DAY_LEN;
+  s.nights++;
+  const reward = 40 + s.nights * 35;
+  earn(reward);
+  addXp(10 + s.nights * 5);
+  s.baseHp = Math.min(baseMax(), s.baseHp + baseMax() * 0.5);
+  playerHp = playerMax();
+  ui.banner(`🌅 Você sobreviveu à noite ${s.nights}!`, `+${fmt(reward)} · casa reparada · plante para a próxima noite`);
+  sfx.level();
+  horde.clear();
+  doSave();
+}
+
+function updatePhase(dt: number) {
+  if (over) return;
+  if (s.phase === 'day') {
+    s.phaseT -= dt;
+    if (s.phaseT <= 0) startNight();
+    const p = 1 - Math.max(0, s.phaseT) / DAY_LEN;
+    visDay += (0.03 + 0.66 * p - visDay) * Math.min(1, dt * 1.5);
+  } else {
+    spawnT -= dt;
+    const n = s.nights + 1;
+    if (spawnT <= 0 && spawnQueue.length && horde.alive() < 34) {
+      spawnOne(spawnQueue.shift()!);
+      spawnT = Math.max(0.3, 2.3 - n * 0.12) * (0.6 + Math.random() * 0.8);
+    }
+    const left = spawnQueue.length + horde.alive();
+    const target = 0.75 + 0.21 * (1 - left / Math.max(1, waveTotal));
+    visDay += (target - visDay) * Math.min(1, dt * (visDay < 0.7 ? 2.2 : 0.8));
+    if (left === 0 && spawnQueue.length === 0) endNight();
+    // gemidos
+    groanT -= dt;
+    if (groanT <= 0) {
+      groanT = 1.5 + Math.random() * 3;
+      const z = horde.nearest(player.pos.x, player.pos.z, 25, true, true);
+      if (z) sfx.groan(z.kind === 'colossus' || z.kind === 'brute');
+    }
+  }
+  if (s.phase === 'day' && visDay > 0.9) visDay = 0.03;
+  s.dayTime = visDay;
+  // vida do jogador
+  hurtT += dt;
+  if (deadT > 0) {
+    deadT -= dt;
+    player.pitch = Math.min(0.9, player.pitch + dt * 0.6);
+    if (deadT <= 0) {
+      player.pos.set(-9.5, 0, 12); player.yaw = -Math.PI / 2; player.pitch = -0.1;
+      playerHp = playerMax();
+      ui.toast('❤️ Você se recuperou na casa');
+    }
+  } else if (hurtT > 4 && playerHp < playerMax()) playerHp = Math.min(playerMax(), playerHp + dt * 8 * (1 + 0.5 * lv('medkit')));
+  if (s.phase === 'night' && s.baseHp < baseMax() * 0.5 && Math.random() < dt * 4) fx.spawn(POS.house.x + (Math.random() - 0.5) * 8, 4 + Math.random() * 2, POS.house.z + (Math.random() - 0.5) * 6, Math.random() < 0.5 ? 0xff7a2a : 0x555555, 2, 1, 2, -1, 1.5);
+}
+
+function hurtPlayer(d: number) {
+  if (deadT > 0 || over) return;
+  if (s.inTractor) d *= 0.4;
+  playerHp -= d;
+  hurtT = 0;
+  ui.hurt(Math.min(1, d * 3));
+  if (playerHp <= 0) {
+    playerHp = 0;
+    deadT = 4;
+    if (s.inTractor) exitTractor();
+    ui.banner('💀 Você caiu!', 'Voltando para a casa em 4 s…');
+    sfx.error();
+  }
+}
+
+function hurtBase(d: number) {
+  if (over) return;
+  s.baseHp -= d;
+  baseAlertT -= 1 / 60;
+  if (baseAlertT <= 0) { baseAlertT = 6; ui.toast('🏠 A casa está sendo atacada!', 'warn'); }
+  if (s.baseHp <= 0) gameOver();
+}
+
+function onKill(z: Zombie, by: 'plant' | 'player') {
+  s.stats.kills++;
+  earn(z.reward);
+  addXp(z.kind === 'colossus' ? 80 : z.kind === 'brute' ? 6 : 2);
+  const p = z.g.position;
+  if (camera.position.distanceToSquared(p) < 1600 || z.kind === 'colossus') ui.float3d(`+${fmt(z.reward)}`, tp.set(p.x, 2.3, p.z), camera, by === 'player' ? 'money' : 'coin');
+  fx.spawn(p.x, 1, p.z, 0x7fbf3a, z.kind === 'colossus' ? 60 : 12, 1.5, 4, 8, 0.9);
+  if (z.kind === 'colossus') { ui.banner('🏆 Colosso derrotado!', `+${fmt(z.reward)}`); boom(p.x, p.z); }
+  if (killSfxT <= 0) { sfx.splat(); killSfxT = 0.08; }
+}
+let killSfxT = 0;
+
+function ramHit(z: Zombie) {
+  const sp = Math.abs(tractor.speed);
+  const f = new THREE.Vector3(-Math.sin(tractor.yaw), 0, -Math.cos(tractor.yaw)).multiplyScalar(Math.sign(tractor.speed) * 9);
+  if (horde.hit(z, sp * 14, { knock: f })) { onKill(z, 'player'); s.stats.runOver++; }
+  sfx.whack();
+  shake = Math.max(shake, 0.15);
+}
+
+function boom(x: number, z: number) {
+  fx.spawn(x, 0.8, z, 0xff8a2a, 40, 4, 7, 6, 0.9);
+  fx.spawn(x, 1.2, z, 0xffe06a, 20, 3, 5, 4, 0.6);
+  fx.spawn(x, 1.5, z, 0x444444, 15, 3, 3, -1, 1.8);
+  sfx.boom();
+  const d = Math.hypot(player.pos.x - x, player.pos.z - z);
+  if (d < 30) shake = Math.max(shake, 0.5 * (1 - d / 30));
+}
+
+const aimDir = new THREE.Vector3();
+function aimTarget(maxAng: number, range: number): Zombie | null {
+  camera.getWorldDirection(aimDir);
+  let best: Zombie | null = null, bs = Infinity;
+  for (const z of horde.list) {
+    if (z.dead || z.burrowed) continue;
+    const zp = z.g.position;
+    const v = new THREE.Vector3(zp.x - camera.position.x, (z.kind === 'crow' ? 3.4 : 1.2) - camera.position.y, zp.z - camera.position.z);
+    const d = v.length();
+    if (d > range) continue;
+    const ang = v.normalize().angleTo(aimDir);
+    if (ang < maxAng && ang * d * 0.3 + d * 0.02 < bs) { bs = ang * d * 0.3 + d * 0.02; best = z; }
+  }
+  return best;
+}
+
+function attack() {
+  player.use();
+  camera.getWorldDirection(aimDir);
+  const fwd = new THREE.Vector3(aimDir.x, 0, aimDir.z).normalize();
+  let hitAny = false;
+  horde.each(player.pos.x, player.pos.z, 3.2, (z) => {
+    const v = new THREE.Vector3(z.g.position.x - player.pos.x, 0, z.g.position.z - player.pos.z);
+    if (v.length() > 0.01 && v.normalize().dot(fwd) < 0.35) return;
+    if (z.kind === 'crow' && player.pitch < 0.2) return;
+    hitAny = true;
+    if (horde.hit(z, 30 * (1 + 0.3 * lv('blade')), { knock: fwd.clone().multiplyScalar(7) })) onKill(z, 'player');
+  });
+  if (hitAny) { sfx.whack(); shake = Math.max(shake, 0.08); }
+  if (lv('seedgun')) {
+    const from = camera.position.clone().addScaledVector(aimDir, 0.8);
+    from.y -= 0.2;
+    defense.fireSeed(from, aimTarget(0.35, 34), aimDir.clone(), 16 * (1 + 0.25 * lv('ammo')));
+    sfx.shoot(3);
+    cooldown = 0.3 / (1 + 0.15 * sk('m1'));
+  } else {
+    if (!hitAny) sfx.swing();
+    cooldown = 0.45 / (1 + 0.15 * sk('m1'));
+  }
+}
+
+function gameOver() {
+  if (over) return;
+  over = true;
+  s.baseHp = 0;
+  const gain = legacyGain(s);
+  let best = 0;
+  try { best = Number(localStorage.getItem('tv-best') || 0); if (s.nights > best) localStorage.setItem('tv-best', String(s.nights)); } catch { /* */ }
+  ui.openPanel('over', `<div class="over"><div class="ic big">🧟</div>
+    <p>A horda invadiu sua casa na <b>noite ${s.nights + 1}</b>.</p>
+    <p>Noites sobrevividas: <b>${s.nights}</b>${best ? ` · Recorde: <b>${Math.max(best, s.nights)}</b>` : ''}<br>Zumbis eliminados: <b>${s.stats.kills}</b></p>
+    <p>Você ganha <b>+${gain} ponto${gain > 1 ? 's' : ''} de Legado</b> (permanentes: +10% vendas, +5% crescimento e +1 ponto de habilidade cada).</p>
+    <button class="big" data-a="restart">🌱 Recomeçar com o Legado</button></div>`);
+  sfx.gameover();
+}
+
+function restart() {
+  const gain = legacyGain(s);
+  const ns = newState(s.legacy + gain, s.prestiges + 1, s.settings);
+  game.s = ns;
+  farm.resetTiles();
+  ns.tiles = farm.serialize();
+  over = false;
+  visDay = 0.05;
+  applyState();
+  ui.closePanel();
+  if (s.inTractor) exitTractor();
+  ui.banner('🌱 Uma nova chance', `Legado ${ns.legacy} · prepare-se para a primeira noite`);
+  doSave();
+}
 
 function checkGoal() {
   const g = GOALS[s.goal];
@@ -480,15 +715,16 @@ holdButton(document.getElementById('btnInteract')!, (v) => { if (v) press('KeyE'
 holdButton(document.getElementById('btnSprint')!, (v) => { if (v) { input.sprint = !input.sprint; document.getElementById('btnSprint')!.classList.toggle('on', input.sprint); } });
 
 function handleKeys() {
-  for (let i = 0; i < 5; i++) if (consume('Digit' + (i + 1))) selectTool(i);
+  for (let i = 0; i < 6; i++) if (consume('Digit' + (i + 1))) selectTool(i);
+  if (consume('KeyN')) startNight();
   if (s.inTractor && s.tpCam) {
     if (consume('WheelDown')) camDist = Math.min(20, camDist + 1.2);
     if (consume('WheelUp')) camDist = Math.max(6, camDist - 1.2);
   }
   if (consume('KeyV')) toggleCam();
   if (consume('KeyK')) ui.togglePanel('skills');
-  if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : lv('multi') ? 5 : 4));
-  if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : lv('multi') ? 5 : 4; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
+  if (consume('WheelDown')) selectTool(((s.inTractor ? s.implement : s.tool) + 1) % (s.inTractor ? IMPLEMENTS.length : lv('multi') ? 6 : 5));
+  if (consume('WheelUp')) { const n = s.inTractor ? IMPLEMENTS.length : lv('multi') ? 6 : 5; selectTool(((s.inTractor ? s.implement : s.tool) + n - 1) % n); }
   if (consume('KeyC')) {
     const avail = CROPS.map((c, i) => [c, i] as const).filter(([c]) => c.level <= s.level);
     const k = avail.findIndex(([, i]) => i === s.crop);
@@ -541,6 +777,7 @@ function frame(now: number) {
   realTime += dt;
   uTime.value += dt;
   soundT -= dt;
+  killSfxT -= dt;
 
   if (playing) {
     simStep(dt, {
@@ -548,7 +785,7 @@ function frame(now: number) {
       truck: (g) => { ui.toast(`🚚 O caminhão vendeu a colheita: +${fmt(g)}`, 'good'); sfx.coin(); },
       interest: (g) => { ui.toast(`🏦 Juros recebidos: +${fmt(g)}`, 'good'); },
     });
-    s.dayTime = (s.clock / DAY + 0.06) % 1;
+    updatePhase(dt);
     handleKeys();
     const [mx, my] = input.enabled ? moveVec() : [0, 0];
     if (input.enabled) {
@@ -601,11 +838,11 @@ function frame(now: number) {
       if (smokeT <= 0) { smokeT = 0.12; const e = tractor.exhaustWorld(); fx.spawn(e.x, e.y, e.z, 0x8a8a8a, 1, 0.2, 1.5 + Math.abs(tractor.speed) * 0.2, -0.6, 1.4); }
       ui.setTileInfo('');
     } else {
-      const sp = walkSpeed() * (input.sprint ? 1.6 : 1);
+      const sp = deadT > 0 ? 0 : walkSpeed() * (input.sprint ? 1.6 : 1);
       player.update(dt, mx, my, sp);
       cooldown -= dt;
       if (sk('m5') && s.can < canCap()) { canAcc += dt * 0.6; if (canAcc >= 1) { canAcc -= 1; s.can++; hudDirty = true; } }
-      if (input.action && input.enabled && cooldown <= 0) useHand();
+      if (input.action && input.enabled && cooldown <= 0 && deadT <= 0) useHand();
       const t0 = targetTile();
       if (t0 >= 0) {
         const tiles = isOwned(t0) ? farm.area(t0, lv('tool')) : [t0];
@@ -623,7 +860,7 @@ function frame(now: number) {
     if (hudDirty && hudT <= 0) { hudDirty = false; hudT = 0.1; ui.updateHud(); ui.refreshPanel(); }
     if (goalT <= 0) { goalT = 0.4; checkGoal(); }
     if (saveT <= 0) { saveT = 10; doSave(); }
-    if (clockT <= 0) { clockT = 0.5; ui.setClock(s.dayTime, Math.floor(s.clock / DAY + 0.06) + 1, world.rainF > 0.3); hudDirty = true; }
+    if (clockT <= 0) { clockT = 0.25; ui.setPhase(s.phase, s.nights + 1, s.phaseT, spawnQueue.length + horde.alive(), world.rainF > 0.3); ui.setVitals(playerHp / playerMax(), s.baseHp / baseMax()); hudDirty = true; }
     if (sparkleT <= 0) {
       sparkleT = 0.08;
       const t = farm.randomRipe();
@@ -641,7 +878,7 @@ function frame(now: number) {
     wasRaining = raining;
   } else {
     // câmera de apresentação
-    s.dayTime = (s.clock / DAY + 0.06) % 1;
+    s.dayTime = 0.12;
     const a = realTime * 0.05;
     camera.position.set(Math.sin(a) * 55, 20 + Math.sin(a * 0.7) * 4, -30 + Math.cos(a) * 55);
     camera.lookAt(lookTarget);
@@ -649,6 +886,15 @@ function frame(now: number) {
 
   view.update(dt);
   life.update(dt, realTime, camera.position);
+  if (playing && !over) {
+    horde.update(dt, realTime, {
+      player: player.pos, tractor: lv('tractor') ? tractor.group.position : null, tractorSpeed: s.inTractor ? tractor.speed : 0, camera,
+      hurtPlayer, hurtBase, kill: (z) => onKill(z, 'plant'), ramHit,
+    });
+    defense.update(dt, s.phase === 'night', camera.position);
+    shotT -= dt;
+  }
+  if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * shake * 0.6; camera.position.y += (Math.random() - 0.5) * shake * 0.6; }
   world.update(dt, camera.position, realTime);
   fx.update(dt);
 
@@ -674,4 +920,4 @@ window.addEventListener('pagehide', doSave);
 window.addEventListener('beforeunload', doSave);
 
 // debug para testes
-(window as any).__tv = { game, farm, player, tractor, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };
+(window as any).__tv = { game, farm, player, tractor, horde, startNight, toggleCam, enterTractor, buyUpgrade, sim: runSim, earn };

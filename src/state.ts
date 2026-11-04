@@ -1,6 +1,7 @@
 export interface Stats {
   plowed: number; planted: number; watered: number; harvested: number;
   sold: number; maxCombo: number; flour: number; oil: number; corn: number;
+  kills: number; runOver: number;
 }
 export interface TileSave { s: number[]; c: number[]; g: number[]; w: number[]; f: number[]; l: number[] }
 export interface Order { item: string; qty: number; bonus: number; time: number }
@@ -25,13 +26,19 @@ export interface State {
   settings: Settings;
   skills: Record<string, number>;
   tpCam: boolean;
+  phase: 'day' | 'night';
+  phaseT: number;
+  nights: number;
+  baseHp: number;
 }
+
+export const DAY_LEN = 170;
 
 export function newState(legacy = 0, prestiges = 0, settings?: Settings): State {
   return {
     v: 1, money: 40 + legacy * 100, xp: 0, level: 1, totalEarned: 0, legacy, prestiges,
     inv: {}, up: {}, parcels: [0], goal: prestiges > 0 ? 5 : 0,
-    stats: { plowed: 0, planted: 0, watered: 0, harvested: 0, sold: 0, maxCombo: 0, flour: 0, oil: 0, corn: 0 },
+    stats: { plowed: 0, planted: 0, watered: 0, harvested: 0, sold: 0, maxCombo: 0, flour: 0, oil: 0, corn: 0, kills: 0, runOver: 0 },
     tool: 0, crop: 0, can: 12, implement: 0,
     dayTime: 0.06, clock: 0,
     px: 0, pz: 10, yaw: 0,
@@ -39,6 +46,7 @@ export function newState(legacy = 0, prestiges = 0, settings?: Settings): State 
     order: null, tiles: null, saved: Date.now(),
     settings: settings ?? { sound: true, quality: 'auto' },
     skills: {}, tpCam: true,
+    phase: 'day', phaseT: DAY_LEN, nights: 0, baseHp: 600,
   };
 }
 
@@ -63,18 +71,20 @@ export const canCap = () => 12 + 12 * lv('can');
 export const walkSpeed = () => 4.6 * (1 + 0.1 * lv('boots')) * (1 + 0.08 * sk('m2'));
 export const tractorSpeed = () => 7 * (1 + 0.15 * lv('engine')) * (1 + 0.1 * sk('m3'));
 export const implWidth = () => 1 + 2 * lv('width') + 2 * sk('m6');
-export const legacyGain = (s: State) => Math.floor(Math.sqrt(s.totalEarned / 2000));
+export const legacyGain = (s: State) => Math.max(1, Math.floor(s.nights / 2));
+export const baseMax = () => Math.round(600 * (1 + 0.5 * lv('fort')));
+export const playerMax = () => 100 + 40 * lv('medkit');
 
 export function era(s: State): number {
-  if (s.prestiges > 0) return 4;
+  if (s.nights >= 15 || s.prestiges > 0) return 4;
   if ((s.up.robots || 0) > 0) return 3;
-  if ((s.up.mill || 0) > 0) return 2;
+  if ((s.up.fort || 0) >= 2 || s.nights >= 6) return 2;
   if ((s.up.tractor || 0) > 0) return 1;
   return 0;
 }
 
 export function vitality(s: State): number {
-  const v = ((s.level - 1) / 11) * 0.72 + ((s.parcels.length - 1) / 8) * 0.28 + s.prestiges * 0.15;
+  const v = ((s.level - 1) / 11) * 0.45 + Math.min(1, s.nights / 15) * 0.35 + ((s.parcels.length - 1) / 8) * 0.2 + s.prestiges * 0.1;
   return Math.max(0, Math.min(1, v));
 }
 
@@ -115,7 +125,7 @@ export function fmt(n: number): string {
   return (neg ? '-$' : '$') + out;
 }
 
-const KEY = 'terraviva-save-v1';
+const KEY = 'terraviva-ultima-v1';
 
 export function save(tiles: TileSave) {
   const s = game.s;

@@ -20,7 +20,7 @@ export class Player {
     this.view.add(this.holder);
     this.holder.position.set(0.42, -0.42, -0.78);
     this.holder.scale.setScalar(0.72);
-    this.tools = [this.hoe(), this.bag(), this.can(), this.sickle(), this.wand()];
+    this.tools = [this.hoe(), this.bag(), this.can(), this.sickle(), this.shovel(), this.wand()];
     for (const t of this.tools) { t.visible = false; this.holder.add(t); }
     this.setTool(0);
   }
@@ -54,6 +54,15 @@ export class Player {
     bx(g, 0.05, 0.3, 0.05, 0x8a5a30, 0, -0.1, 0);
     const b = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 4, 14, Math.PI * 1.1), mat(0xc9ced6)); b.position.set(0.0, 0.18, -0.12); b.rotation.set(0, Math.PI / 2, 0.2); g.add(b);
     g.rotation.set(0.2, 0, -0.3);
+    return g;
+  }
+  private shovel() {
+    const g = new THREE.Group();
+    bx(g, 0.05, 0.05, 1.0, 0x6b4425, 0, 0, -0.05);
+    bx(g, 0.2, 0.05, 0.08, 0x6b4425, 0, 0, 0.45);
+    const blade = bx(g, 0.26, 0.03, 0.34, 0x8a9098, 0, 0, -0.68); blade.rotation.x = 0.1;
+    bx(g, 0.04, 0.02, 0.3, 0xb53a2a, 0.08, 0.02, -0.68);
+    g.rotation.set(0.7, 0.2, -0.3);
     return g;
   }
   private wand() {

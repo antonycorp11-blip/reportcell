@@ -1,0 +1,238 @@
+import * as THREE from 'three';
+import { box, mat, cone, ico } from './gfx';
+import { resolve } from './physics';
+import * as farm from './farm';
+import type { FX } from './fx';
+
+export type ZKind = 'walker' | 'runner' | 'brute' | 'digger' | 'crow' | 'colossus';
+
+export const ZDEF: Record<ZKind, { name: string; hp: number; speed: number; dps: number; reward: number; scale: number; shirt: number; skin: number }> = {
+  walker: { name: 'Andarilho', hp: 60, speed: 1.15, dps: 10, reward: 6, scale: 1, shirt: 0x5a6f8a, skin: 0x86a06e },
+  runner: { name: 'Corredor', hp: 34, speed: 2.7, dps: 8, reward: 8, scale: 0.9, shirt: 0xa0463a, skin: 0x9aae7a },
+  brute: { name: 'Brutamonte', hp: 340, speed: 0.75, dps: 30, reward: 26, scale: 1.55, shirt: 0x3c3c44, skin: 0x6f8a5a },
+  digger: { name: 'Cavador', hp: 90, speed: 1.6, dps: 14, reward: 15, scale: 0.95, shirt: 0x7a5a3a, skin: 0x8a9a62 },
+  crow: { name: 'Corvo-zumbi', hp: 30, speed: 3.3, dps: 6, reward: 10, scale: 1, shirt: 0x1d1f22, skin: 0x2f3a2a },
+  colossus: { name: 'Colosso', hp: 2600, speed: 0.6, dps: 70, reward: 320, scale: 2.7, shirt: 0x4a2a3a, skin: 0x5f7a4a },
+};
+
+export interface Zombie {
+  kind: ZKind; g: THREE.Group; hp: number; max: number; speed: number; dps: number; reward: number;
+  legs: THREE.Object3D[]; arms: THREE.Object3D[]; body: THREE.Object3D;
+  walk: number; slowT: number; slowK: number; poisonT: number; poisonD: number;
+  dead: number; burrowed: boolean; mound?: THREE.Mesh; bar: THREE.Group; barFg: THREE.Mesh;
+  hitT: number; ramT: number; groan: number; vx: number; vz: number; eating: boolean;
+}
+
+const BASE = new THREE.Vector3(-17, 0, 12);
+const HOUSE = { x1: -22.4, z1: 7.8, x2: -11.6, z2: 16.2 };
+const geo = {
+  torso: box(0.56, 0.72, 0.32), head: box(0.4, 0.42, 0.4), limb: box(0.17, 0.62, 0.17), leg: box(0.2, 0.8, 0.2),
+  eye: box(0.08, 0.06, 0.04), mound: new THREE.SphereGeometry(0.7, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+  wing: box(1.1, 0.04, 0.4), beak: cone(0.06, 0.25, 4), bar: new THREE.PlaneGeometry(1, 0.11),
+};
+geo.limb.translate(0, -0.28, 0);
+geo.leg.translate(0, -0.4, 0);
+geo.wing.translate(0.55, 0, 0);
+export const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff3b2a });
+const barBg = new THREE.MeshBasicMaterial({ color: 0x220000, depthTest: false, transparent: true, opacity: 0.7 });
+const barFgMat = new THREE.MeshBasicMaterial({ color: 0xff4040, depthTest: false });
+const pants = [0x3a4a5e, 0x4e3e2e, 0x2e3a2e, 0x5a4a6a];
+
+export interface ZCtx {
+  player: THREE.Vector3; tractor: THREE.Vector3 | null; tractorSpeed: number; camera: THREE.Camera;
+  hurtPlayer: (d: number) => void; hurtBase: (d: number) => void; kill: (z: Zombie) => void; ramHit: (z: Zombie) => void;
+}
+
+export class Horde {
+  list: Zombie[] = [];
+  private scene: THREE.Scene;
+  private fx: FX;
+
+  constructor(scene: THREE.Scene, fx: FX) { this.scene = scene; this.fx = fx; }
+
+  alive() { let n = 0; for (const z of this.list) if (z.dead === 0) n++; return n; }
+
+  spawn(kind: ZKind, x: number, z: number, hpMult: number) {
+    const d = ZDEF[kind];
+    const g = new THREE.Group();
+    const body = new THREE.Group(); g.add(body);
+    const skin = mat(d.skin), shirt = mat(d.shirt);
+    const legs: THREE.Object3D[] = [], arms: THREE.Object3D[] = [];
+    if (kind === 'crow') {
+      const b = new THREE.Mesh(ico(0.28, 0), shirt); b.scale.set(0.8, 0.7, 1.4); body.add(b);
+      const h = new THREE.Mesh(ico(0.16, 0), shirt); h.position.set(0, 0.12, -0.38); body.add(h);
+      const beak = new THREE.Mesh(geo.beak, mat(0x6a7a3a)); beak.rotation.x = -Math.PI / 2; beak.position.set(0, 0.1, -0.6); body.add(beak);
+      for (const sx of [-1, 1]) {
+        const e = new THREE.Mesh(geo.eye, eyeMat); e.position.set(sx * 0.08, 0.18, -0.5); body.add(e);
+        const w = new THREE.Mesh(geo.wing, shirt); w.scale.x = sx; body.add(w); arms.push(w);
+      }
+      body.position.y = 3.4;
+    } else {
+      const torso = new THREE.Mesh(geo.torso, shirt); torso.position.y = 1.16; torso.rotation.x = 0.18; body.add(torso);
+      const head = new THREE.Mesh(geo.head, skin); head.position.set(0, 1.72, -0.08); head.rotation.z = (Math.random() - 0.5) * 0.4; body.add(head);
+      for (const sx of [-1, 1]) {
+        const e = new THREE.Mesh(geo.eye, eyeMat); e.position.set(sx * 0.1, 1.76, -0.29); body.add(e);
+        const a = new THREE.Group(); a.position.set(sx * 0.37, 1.46, -0.02);
+        const am = new THREE.Mesh(geo.limb, skin); a.add(am); a.rotation.x = -1.35; body.add(a); arms.push(a);
+        const l = new THREE.Group(); l.position.set(sx * 0.14, 0.82, 0);
+        l.add(new THREE.Mesh(geo.leg, mat(pants[(Math.random() * pants.length) | 0]))); body.add(l); legs.push(l);
+      }
+      if (kind === 'colossus') { for (const sx of [-1, 1]) { const sp = new THREE.Mesh(cone(0.12, 0.4, 4), mat(0xd8d0b8)); sp.position.set(sx * 0.2, 1.62, 0.1); sp.rotation.x = 0.6; body.add(sp); } }
+    }
+    body.scale.setScalar(d.scale);
+    g.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.parent !== null) (o as THREE.Mesh).castShadow = true; });
+    // barra de vida
+    const bar = new THREE.Group();
+    const bg = new THREE.Mesh(geo.bar, barBg); bg.renderOrder = 20; bar.add(bg);
+    const fg = new THREE.Mesh(geo.bar, barFgMat); fg.renderOrder = 21; fg.position.z = 0.001; bar.add(fg);
+    bar.position.y = kind === 'crow' ? 4.2 : 2.2 * d.scale + 0.2;
+    bar.scale.setScalar(kind === 'colossus' ? 2.4 : 1);
+    bar.visible = false;
+    g.add(bar);
+    g.position.set(x, 0, z);
+    g.rotation.y = Math.atan2(-(BASE.x - x), -(BASE.z - z));
+    this.scene.add(g);
+    const zb: Zombie = {
+      kind, g, hp: d.hp * hpMult, max: d.hp * hpMult, speed: d.speed * (0.9 + Math.random() * 0.2), dps: d.dps * (1 + (hpMult - 1) * 0.5), reward: Math.round(d.reward * (1 + (hpMult - 1) * 0.4)),
+      legs, arms, body, walk: Math.random() * 6, slowT: 0, slowK: 1, poisonT: 0, poisonD: 0, dead: 0,
+      burrowed: kind === 'digger', bar, barFg: fg, hitT: 0, ramT: 0, groan: 2 + Math.random() * 8, vx: 0, vz: 0, eating: false,
+    };
+    if (zb.burrowed) {
+      body.visible = false;
+      zb.mound = new THREE.Mesh(geo.mound, mat(0x6b4a2a)); zb.mound.scale.y = 0.5; g.add(zb.mound);
+    }
+    this.list.push(zb);
+    return zb;
+  }
+
+  /** Aplica dano; retorna true se matou. */
+  hit(z: Zombie, dmg: number, opt: { slow?: number; slowT?: number; poison?: number; knock?: THREE.Vector3; ignoreBurrow?: boolean } = {}): boolean {
+    if (z.dead) return false;
+    if (z.burrowed && !opt.ignoreBurrow) return false;
+    z.hp -= dmg;
+    z.hitT = 0.12;
+    if (opt.slow) { z.slowK = Math.min(z.slowK, opt.slow); z.slowT = Math.max(z.slowT, opt.slowT ?? 1); }
+    if (opt.poison) { z.poisonD = Math.max(z.poisonD, opt.poison); z.poisonT = 3; }
+    if (opt.knock && z.kind !== 'colossus') { z.vx += opt.knock.x; z.vz += opt.knock.z; }
+    const p = z.g.position;
+    this.fx.spawn(p.x, (z.kind === 'crow' ? 3.4 : 1.3) * (z.kind === 'colossus' ? 2 : 1), p.z, 0x7fbf3a, 4, 0.8, 2.5, 8, 0.5);
+    if (z.hp <= 0) { z.dead = 0.001; z.bar.visible = false; return true; }
+    return false;
+  }
+
+  /** Zumbi vivo e atingível mais próximo de um ponto. */
+  nearest(x: number, z: number, range: number, allowFly = true, allowBurrow = false): Zombie | null {
+    let best: Zombie | null = null, bd = range * range;
+    for (const zb of this.list) {
+      if (zb.dead || (zb.burrowed && !allowBurrow) || (!allowFly && zb.kind === 'crow')) continue;
+      const dx = zb.g.position.x - x, dz = zb.g.position.z - z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = zb; }
+    }
+    return best;
+  }
+
+  each(x: number, z: number, r: number, f: (z: Zombie) => void, burrowToo = false) {
+    for (const zb of this.list) {
+      if (zb.dead || (zb.burrowed && !burrowToo)) continue;
+      const dx = zb.g.position.x - x, dz = zb.g.position.z - z;
+      if (dx * dx + dz * dz < r * r) f(zb);
+    }
+  }
+
+  clear() { for (const z of this.list) this.scene.remove(z.g); this.list = []; }
+
+  update(dt: number, time: number, ctx: ZCtx) {
+    const L = this.list;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const z = L[i];
+      const p = z.g.position;
+      if (z.dead) {
+        z.dead += dt;
+        if (z.dead < 0.5) z.body.rotation.x = -(z.dead / 0.5) * 1.5;
+        else p.y -= dt * 0.8;
+        if (z.kind === 'crow') p.y -= dt * 4;
+        if (z.dead > 2.2) { this.scene.remove(z.g); L.splice(i, 1); }
+        continue;
+      }
+      // status
+      if (z.poisonT > 0) { z.poisonT -= dt; z.hp -= z.poisonD * dt; if (Math.random() < dt * 4) this.fx.spawn(p.x, 1.5, p.z, 0xff4f6a, 1, 0.4, 1, -1, 0.6); if (z.hp <= 0) { z.dead = 0.001; z.bar.visible = false; ctx.kill(z); continue; } }
+      if (z.slowT > 0) { z.slowT -= dt; if (z.slowT <= 0) z.slowK = 1; }
+      z.hitT -= dt;
+      z.ramT -= dt;
+
+      // alvo: jogador (se perto) ou a casa
+      const dpx = ctx.player.x - p.x, dpz = ctx.player.z - p.z;
+      const dPlayer = Math.hypot(dpx, dpz);
+      const chase = dPlayer < (z.kind === 'crow' ? 14 : 7) && !z.burrowed;
+      let tx = chase ? ctx.player.x : BASE.x, tz = chase ? ctx.player.z : BASE.z;
+      // distância até a casa
+      const cx = Math.max(HOUSE.x1, Math.min(p.x, HOUSE.x2)), cz = Math.max(HOUSE.z1, Math.min(p.z, HOUSE.z2));
+      const dHouse = Math.hypot(p.x - cx, p.z - cz);
+      if (z.burrowed && dHouse < 16) {
+        z.burrowed = false; z.body.visible = true; if (z.mound) z.g.remove(z.mound);
+        this.fx.spawn(p.x, 0.3, p.z, 0x6b4a2a, 25, 2, 5, 9, 0.9);
+      }
+      let speed = z.speed * z.slowK;
+      z.eating = false;
+      let attacking = false;
+      if (!chase && dHouse < 0.9 * (z.kind === 'colossus' ? 2.2 : 1) + 0.5) { attacking = true; ctx.hurtBase(z.dps * dt); }
+      else if (chase && dPlayer < 1.2 * (z.kind === 'colossus' ? 2 : 1)) { attacking = true; ctx.hurtPlayer(z.dps * dt); }
+      else if (z.kind !== 'crow' && !z.burrowed) {
+        const t = farm.tileAt(p.x, p.z);
+        if (t >= 0 && farm.T.s[t] === 2 && farm.T.h[t] > 0) {
+          z.eating = true;
+          if (farm.damageTile(t, z.dps * dt * (z.kind === 'colossus' ? 4 : 1))) this.fx.spawn(farm.tileX(t), 0.5, farm.tileZ(t), 0x6a8a3a, 12, 1.2, 3, 9, 0.8);
+          else if (Math.random() < dt * 3) this.fx.spawn(farm.tileX(t), 0.6, farm.tileZ(t), 0x7fb54a, 2, 0.8, 2, 9, 0.5);
+        }
+      }
+      if (attacking || z.eating) speed = 0;
+      const dx = tx - p.x, dz = tz - p.z, dd = Math.hypot(dx, dz) || 1;
+      let mx = (dx / dd) * speed, mz = (dz / dd) * speed;
+      // separação
+      for (const o of L) {
+        if (o === z || o.dead || o.kind === 'crow') continue;
+        const ox = p.x - o.g.position.x, oz = p.z - o.g.position.z, od = ox * ox + oz * oz;
+        if (od < 0.64 && od > 1e-4) { const k = (0.8 - Math.sqrt(od)) * 2; mx += ox * k; mz += oz * k; }
+      }
+      p.x += (mx + z.vx) * dt; p.z += (mz + z.vz) * dt;
+      z.vx *= Math.exp(-dt * 6); z.vz *= Math.exp(-dt * 6);
+      if (z.kind !== 'crow') resolve(p, 0.4 * ZDEF[z.kind].scale);
+      if (z.burrowed && Math.random() < dt * 6) this.fx.spawn(p.x, 0.2, p.z, 0x6b4a2a, 1, 0.6, 1.5, 9, 0.5);
+      // trator atropela
+      if (ctx.tractor && Math.abs(ctx.tractorSpeed) > 1.8 && z.ramT <= 0 && z.kind !== 'crow' && !z.burrowed) {
+        const tx2 = p.x - ctx.tractor.x, tz2 = p.z - ctx.tractor.z;
+        if (tx2 * tx2 + tz2 * tz2 < 5.5) { z.ramT = 0.6; ctx.ramHit(z); }
+      }
+      // animação
+      if (speed > 0.05) {
+        const yaw = Math.atan2(-mx, -mz);
+        let dy = yaw - z.g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        z.g.rotation.y += dy * Math.min(1, dt * 5);
+      } else if (attacking || z.eating) {
+        const yaw = Math.atan2(-(tx - p.x), -(tz - p.z));
+        if (!z.eating) z.g.rotation.y = yaw;
+      }
+      z.walk += dt * speed * 4.5;
+      const sw = Math.sin(z.walk) * 0.6;
+      if (z.kind === 'crow') {
+        const f = Math.sin(time * 14 + z.walk) * 0.7;
+        z.arms[0].rotation.z = f; z.arms[1].rotation.z = -f;
+        z.body.position.y = 3.4 + Math.sin(time * 3 + z.walk) * 0.2;
+      } else {
+        z.legs[0].rotation.x = sw; z.legs[1].rotation.x = -sw;
+        const atk = attacking || z.eating ? Math.sin(time * 10) * 0.5 : 0;
+        z.arms[0].rotation.x = -1.35 + sw * 0.25 + atk; z.arms[1].rotation.x = -1.35 - sw * 0.25 - atk;
+        z.body.rotation.z = Math.sin(z.walk * 0.5) * 0.08;
+        z.body.position.y = z.eating ? -0.25 : 0;
+      }
+      // barra de vida
+      if (z.hp < z.max) {
+        z.bar.visible = true;
+        const k = Math.max(0, z.hp / z.max);
+        z.barFg.scale.x = k; z.barFg.position.x = -(1 - k) / 2;
+        z.bar.quaternion.copy(ctx.camera.quaternion).premultiply(z.g.quaternion.clone().invert());
+      }
+      z.groan -= dt;
+    }
+  }
+}

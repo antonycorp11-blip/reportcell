@@ -24,9 +24,9 @@ export const parcelLevel = (n: number) => n + 1;
 export function parcelSignPos(id: number) { const p = PARCELS[id]; return new THREE.Vector3(p.x0 + 10, 0, p.z0 + 20.6); }
 
 const C = (h: number) => new THREE.Color(h);
-const DAY_TOP = C(0x3d86d6), DAY_HOR = C(0xc4e6f7), NIGHT_TOP = C(0x060c22), NIGHT_HOR = C(0x1d2a4c), GOLD = C(0xffa766), RAIN = C(0x8f98a3);
-const SUN_DAY = C(0xfff3dd), SUN_GOLD = C(0xffa45c), MOON = C(0x9fb4e6);
-const GRASS_DRY = C(0xb9ad62), GRASS_LUSH = C(0x5ea845), HILL = C(0x4c7f3a), ROCK = C(0x8e8f80), SAND = C(0xd9c995);
+const DAY_TOP = C(0x5f86a8), DAY_HOR = C(0xe2b98a), NIGHT_TOP = C(0x04080c), NIGHT_HOR = C(0x16301f), GOLD = C(0xff8a4a), RAIN = C(0x7f8a86);
+const SUN_DAY = C(0xffe6c4), SUN_GOLD = C(0xff8a4a), MOON = C(0x8fd0a8);
+const GRASS_DRY = C(0xb9ad62), GRASS_LUSH = C(0x5ea845), HILL = C(0x7a6e4c), ROCK = C(0x7d766a), SAND = C(0xd9c995), ASH = C(0x8c7d5a);
 
 export class World {
   scene: THREE.Scene;
@@ -140,6 +140,7 @@ export class World {
     this.buildTrees();
     this.buildFlowers();
     this.buildRocks();
+    this.buildRuins();
     this.buildFence();
     this.buildHouse();
     this.buildBarn();
@@ -274,7 +275,13 @@ export class World {
       part(ico(1.4, 0), 0x8cc152, [0, 4.6, 0], [0, 0, 0], [1, 1.4, 1]),
       part(ico(1.0, 0), 0x9dcc5a, [0.5, 5.6, 0.2]),
     ];
-    const geos = [shade(merge(pine), 0.5), shade(merge(round), 0.5), shade(merge(birch), 0.55)];
+    const dead: THREE.BufferGeometry[] = [
+      part(cyl(0.18, 0.34, 4.2, 5), 0x4a3f36, [0, 2.1, 0]),
+      part(cyl(0.06, 0.12, 2.0, 4), 0x4a3f36, [0.6, 3.3, 0], [0, 0, -0.9]),
+      part(cyl(0.05, 0.1, 1.6, 4), 0x4a3f36, [-0.5, 3.8, 0.2], [0.3, 0, 0.8]),
+      part(cyl(0.04, 0.08, 1.2, 4), 0x4a3f36, [0.1, 4.4, -0.4], [-0.7, 0, 0.1]),
+    ];
+    const geos = [shade(merge(pine), 0.5), shade(merge(round), 0.5), shade(merge(birch), 0.55), shade(merge(dead), 0.6)];
     const r = rng(42);
     const spots: { x: number; z: number; type: number }[] = [];
     const fixed: [number, number, number][] = [[-27, 4, 1], [-25, 20, 1], [-8, 24, 2], [8, 26, 1], [30, 18, 1], [33, 9, 2], [-29, 12, 2], [-12, 28, 0], [16, 28, 0], [-48, -4, 1], [48, -2, 1], [-50, -40, 0], [50, -44, 0], [-52, -70, 1], [52, -66, 2]];
@@ -285,9 +292,10 @@ export class World {
       const x = (r() - 0.5) * 640, z = -340 + r() * 600;
       if (x > -56 && x < 56 && z > -90 && z < 40) continue;
       if (Math.abs(x) < 6 && z > 30) continue;
-      spots.push({ x, z, type: r() < 0.45 ? 0 : r() < 0.7 ? 1 : 2 });
+      const far = Math.hypot(x, (z + 25) * 1.2) > 95;
+      spots.push({ x, z, type: far && r() < 0.7 ? 3 : r() < 0.45 ? 0 : r() < 0.7 ? 1 : 2 });
     }
-    const counts = [0, 0, 0];
+    const counts = [0, 0, 0, 0];
     for (const s of spots) counts[s.type]++;
     const meshes = geos.map((g, i) => {
       const m = new THREE.InstancedMesh(g, windMat(0.0035), counts[i]);
@@ -295,9 +303,9 @@ export class World {
       this.scene.add(m);
       return m;
     });
-    const idx = [0, 0, 0];
+    const idx = [0, 0, 0, 0];
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3();
-    this.treeTint = [[], [], []];
+    this.treeTint = [[], [], [], []];
     for (const s of spots) {
       const k = 0.8 + r() * 0.8;
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 6.28);
@@ -360,6 +368,60 @@ export class World {
     m.castShadow = true; m.receiveShadow = true;
     this.scene.add(m);
   }
+
+  private buildRuins() {
+    const r = rng(666);
+    // cidade em ruínas no horizonte
+    const P: THREE.BufferGeometry[] = [];
+    const fire: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 46; i++) {
+      const a = -Math.PI * 0.95 + r() * Math.PI * 0.9;
+      const d = 330 + r() * 80;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d - 30;
+      const w = 10 + r() * 16, h = 14 + r() * 34, dd = 10 + r() * 14;
+      const y = heightAt(x, z) - 2;
+      const col = [0x5d5a58, 0x6a625a, 0x4f5155][i % 3];
+      P.push(part(box(w, h, dd), col, [x, y + h / 2, z], [0, r(), 0]));
+      for (let k = 0; k < 3; k++) P.push(part(box(w * (0.2 + r() * 0.3), 4 + r() * 8, dd * 0.4), col, [x + (r() - 0.5) * w * 0.6, y + h + 1, z + (r() - 0.5) * dd * 0.4], [r() * 0.5, 0, r() * 0.5]));
+      if (r() < 0.4) fire.push(part(box(w * 0.3, 2.5, 0.5), 0xff7a2a, [x, y + h * (0.3 + r() * 0.5), z], [0, r() * 3, 0]));
+    }
+    const city = new THREE.Mesh(merge(P), mat(0xffffff, { vertexColors: true }));
+    this.scene.add(city);
+    this.fireMat = new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.6 });
+    this.scene.add(new THREE.Mesh(merge(fire), this.fireMat));
+    // colunas de fumaça
+    const sm = new THREE.MeshBasicMaterial({ color: 0x2a2826, transparent: true, opacity: 0.45, depthWrite: false });
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI * 0.9 + r() * Math.PI * 0.8, d = 200 + r() * 90;
+      const g = new THREE.Group();
+      for (let k = 0; k < 5; k++) { const c = new THREE.Mesh(ico(6 + k * 3, 0), sm); c.position.set(k * 4, 10 + k * 14, k * 2); g.add(c); }
+      g.position.set(Math.cos(a) * d, heightAt(Math.cos(a) * d, Math.sin(a) * d - 30), Math.sin(a) * d - 30);
+      this.smokes.push(g); this.scene.add(g);
+    }
+    // carros abandonados e postes caídos
+    const car = (x: number, z: number, rot: number, flip: boolean, col: number) => {
+      const g = new THREE.Group(); g.position.set(x, flip ? 1.5 : 0, z); g.rotation.set(flip ? Math.PI : 0, rot, (r() - 0.5) * 0.15);
+      bx(g, 1.9, 0.75, 4.2, col, 0, 0.75, 0);
+      bx(g, 1.7, 0.65, 2.1, col, 0, 1.45, 0.3);
+      bx(g, 1.72, 0.45, 1.6, 0x2a3036, 0, 1.45, 0.3);
+      for (const [wx, wz] of [[-0.95, -1.3], [0.95, -1.3], [-0.95, 1.3], [0.95, 1.3]]) { const w = new THREE.Mesh(cyl(0.38, 0.38, 0.3, 8), mat(0x1c1c1c)); w.rotation.z = Math.PI / 2; w.position.set(wx, 0.38, wz); g.add(w); }
+      this.scene.add(g);
+      if (Math.abs(x) < 92 && z > -94 && z < 60) colliders.boxes.push({ x1: x - 2, z1: z - 2, x2: x + 2, z2: z + 2 });
+    };
+    car(-6.5, 50, 0.3, false, 0x8a4a2a); car(7, 42, -0.5, true, 0x5a6a7a); car(-60, -30, 1.2, false, 0x6a7a4a);
+    car(70, 20, 2.1, false, 0x7a3030); car(-75, 40, 0.8, true, 0x8a7a5a); car(55, -85, -0.4, false, 0x4a5a6a); car(-30, -92, 1.6, false, 0x7a5a3a);
+    for (let i = 0; i < 8; i++) {
+      const x = 7 + (i % 2) * -14, z = 36 + i * 3.5;
+      if (i % 3) continue;
+      const p = new THREE.Mesh(cyl(0.12, 0.16, 7, 5), mat(0x3a3028)); p.position.set(x, 3.2, z); p.rotation.z = 0.25 * (i % 2 ? 1 : -1); p.castShadow = true; this.scene.add(p);
+    }
+    // barricada na entrada
+    for (let i = 0; i < 7; i++) {
+      const b = new THREE.Mesh(cyl(0.08, 0.08, 2.6, 4), mat(0x6b4a2a)); b.rotation.set(0.9, 0, (i % 2 ? 0.6 : -0.6)); b.position.set(-14 + i * 1.2 + (i > 3 ? 20 : 0), 0.9, 30.5); b.castShadow = true; this.scene.add(b);
+    }
+  }
+  private fireMat!: THREE.MeshBasicMaterial;
+  private smokes: THREE.Group[] = [];
 
   private buildFence() {
     const P: THREE.BufferGeometry[] = [];
@@ -601,6 +663,10 @@ export class World {
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
       const n = fbm(x * 0.045, z * 0.045);
       c.copy(base).multiplyScalar(0.82 + n * 0.36);
+      // terra devastada fora do oásis da fazenda
+      const ox = Math.max(0, Math.abs(x) - (48 + vit * 40)), oz = Math.max(0, z - (34 + vit * 25), -(86 + vit * 10) - z);
+      const waste = Math.min(1, Math.hypot(ox, oz) / 30);
+      if (waste > 0) c.lerp(ASH, waste * (0.75 + n * 0.25));
       if (y > 1) c.lerp(HILL, Math.min(1, y / 25) * 0.7);
       if (y > 34) c.lerp(ROCK, Math.min(1, (y - 34) / 12));
       const dp = Math.hypot(x - POS.pond.x, z - POS.pond.z);
@@ -675,7 +741,8 @@ export class World {
     this.skyMat.uniforms.sunCol.value.copy(SUN_DAY).lerp(SUN_GOLD, goldF);
     this.skyMat.uniforms.sunVis.value = dayF * (1 - rf * 0.9);
     (this.scene.fog as THREE.Fog).color.copy(hor);
-    (this.scene.fog as THREE.Fog).far = 430 - rf * 200;
+    (this.scene.fog as THREE.Fog).far = (430 - rf * 200) * (1 - this.night * 0.6);
+    (this.scene.fog as THREE.Fog).near = 90 * (1 - this.night * 0.6);
 
     const lightDir = el > -0.05 ? this.sunDir : new THREE.Vector3(-this.sunDir.x, -this.sunDir.y, this.sunDir.z).normalize();
     this.sun.position.copy(camPos).addScaledVector(lightDir, 100);
@@ -685,6 +752,8 @@ export class World {
     this.hemi.intensity = (0.5 + 1.05 * dayF) * (1 - rf * 0.15);
     this.hemi.color.copy(top).lerp(new THREE.Color(0xffffff), 0.5);
     this.windowMat.emissiveIntensity = this.night * 1.3;
+    this.fireMat.opacity = 0.25 + this.night * 0.6 + Math.sin(time * 7) * 0.08;
+    for (const g of this.smokes) g.rotation.y += dt * 0.03;
     this.lampMat.emissiveIntensity = this.night * 2;
     this.porch.intensity = this.night * 30;
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, this.night - 0.3) * (1 - rf);

@@ -3,15 +3,16 @@ import type { State } from './state';
 export interface CropDef {
   id: string; name: string; icon: string;
   seed: number; price: number; time: number; xp: number; level: number;
+  def: string; role: string;
 }
 
 export const CROPS: CropDef[] = [
-  { id: 'wheat', name: 'Trigo', icon: '🌾', seed: 2, price: 7, time: 30, xp: 2, level: 1 },
-  { id: 'corn', name: 'Milho', icon: '🌽', seed: 6, price: 18, time: 55, xp: 4, level: 2 },
-  { id: 'sunflower', name: 'Girassol', icon: '🌻', seed: 12, price: 34, time: 80, xp: 7, level: 4 },
-  { id: 'pumpkin', name: 'Abóbora', icon: '🎃', seed: 25, price: 70, time: 115, xp: 12, level: 6 },
-  { id: 'strawberry', name: 'Morango', icon: '🍓', seed: 40, price: 105, time: 140, xp: 18, level: 8 },
-  { id: 'lavender', name: 'Lavanda', icon: '💜', seed: 70, price: 180, time: 180, xp: 28, level: 10 },
+  { id: 'wheat', name: 'Trigo', icon: '🌾', seed: 2, price: 7, time: 20, xp: 2, level: 1, def: 'Trigo-Navalha', role: 'Corta e deixa lento quem pisa nele' },
+  { id: 'corn', name: 'Milho', icon: '🌽', seed: 6, price: 18, time: 35, xp: 4, level: 2, def: 'Milho-Artilheiro', role: 'Atira grãos (alcance 15 m)' },
+  { id: 'sunflower', name: 'Girassol', icon: '🌻', seed: 12, price: 34, time: 50, xp: 7, level: 4, def: 'Girassol-Laser', role: 'Raio solar de longo alcance (19 m)' },
+  { id: 'pumpkin', name: 'Abóbora', icon: '🎃', seed: 25, price: 70, time: 60, xp: 12, level: 5, def: 'Abóbora-Bomba', role: 'Muro resistente que explode' },
+  { id: 'strawberry', name: 'Morango', icon: '🍓', seed: 40, price: 105, time: 70, xp: 18, level: 7, def: 'Morango-Ácido', role: 'Arremessa ácido que envenena em área' },
+  { id: 'lavender', name: 'Lavanda', icon: '💜', seed: 70, price: 180, time: 80, xp: 28, level: 9, def: 'Lavanda-Sonífera', role: 'Aura que deixa zumbis lentos e fere' },
 ];
 
 export interface ProductDef {
@@ -29,7 +30,7 @@ export const ITEMS: Record<string, ItemDef> = {};
 for (const c of CROPS) ITEMS[c.id] = { id: c.id, name: c.name, icon: c.icon, price: c.price };
 for (const p of PRODUCTS) ITEMS[p.id] = { id: p.id, name: p.name, icon: p.icon, price: p.price };
 
-export type Tab = 'agro' | 'mec' | 'com' | 'auto' | 'build';
+export type Tab = 'def' | 'agro' | 'mec' | 'com' | 'auto' | 'build';
 
 export interface UpDef {
   id: string; tab: Tab; name: string; icon: string; max: number;
@@ -45,6 +46,14 @@ const all = (...fs: ((s: State) => string | null)[]) => (s: State) => {
 };
 
 export const UPGRADES: UpDef[] = [
+  // Defesa
+  { id: 'rage', tab: 'def', name: 'Raiva Verde', icon: '😡', max: 10, base: 120, mult: 1.75, desc: (l) => `Plantas causam +15% de dano por nível (atual +${l * 15}%)` },
+  { id: 'fort', tab: 'def', name: 'Fortificar Casa', icon: '🏠', max: 6, base: 150, mult: 2.1, desc: (l) => `Vida da casa: ${Math.round(600 * (1 + 0.5 * l))} → ${Math.round(600 * (1 + 0.5 * (l + 1)))}` },
+  { id: 'blade', tab: 'def', name: 'Pá Afiada', icon: '🗡️', max: 5, base: 90, mult: 2, desc: (l) => `+30% de dano corpo a corpo por nível (atual +${l * 30}%)` },
+  { id: 'medkit', tab: 'def', name: 'Kit Médico', icon: '❤️', max: 3, base: 200, mult: 2.5, desc: (l) => `Sua vida: ${100 + 40 * l} → ${100 + 40 * (l + 1)} e regenera mais rápido` },
+  { id: 'seedgun', tab: 'def', name: 'Lança-Sementes', icon: '🔫', max: 1, base: 500, mult: 1, desc: () => 'Sua arma passa a atirar sementes à distância (mira automática)', req: L(3) },
+  { id: 'ammo', tab: 'def', name: 'Munição Turbinada', icon: '💥', max: 5, base: 350, mult: 2.1, desc: (l) => `+25% de dano do Lança-Sementes por nível (atual +${l * 25}%)`, req: U('seedgun', 'Lança-Sementes') },
+
   // Agronomia
   { id: 'growth', tab: 'agro', name: 'Adubo Orgânico', icon: '🧪', max: 10, base: 60, mult: 1.75, desc: (l) => `Plantas crescem +12% mais rápido por nível (atual: +${l * 12}%)` },
   { id: 'yield', tab: 'agro', name: 'Sementes Selecionadas', icon: '🌱', max: 10, base: 120, mult: 1.8, desc: (l) => `+15% de produção por colheita (atual: +${l * 15}%)` },
@@ -78,31 +87,28 @@ const has = (s: State, id: string) => (s.up[id] || 0);
 
 export const GOALS: Goal[] = [
   { text: 'Are 4 canteiros com a enxada', prog: (s) => [s.stats.plowed, 4], reward: 20 },
-  { text: 'Plante 4 sementes de trigo', prog: (s) => [s.stats.planted, 4], reward: 20 },
+  { text: 'Plante 4 trigos — à noite eles viram Trigo-Navalha', prog: (s) => [s.stats.planted, 4], reward: 20 },
   { text: 'Regue as plantas (encha o regador no poço)', prog: (s) => [s.stats.watered, 4], reward: 20 },
-  { text: 'Colha 4 trigos maduros com a foice', prog: (s) => [s.stats.harvested, 4], reward: 30 },
-  { text: 'Venda sua colheita no Mercado 📈', prog: (s) => [Math.min(s.stats.sold, 1), 1], reward: 30 },
-  { text: 'Alcance o nível 2', prog: (s) => [s.level, 2], reward: 50 },
-  { text: 'Plante 10 pés de milho', prog: (s) => [s.stats.corn, 10], reward: 60 },
-  { text: 'Faça um combo de colheita x10', prog: (s) => [s.stats.maxCombo, 10], reward: 80 },
-  { text: 'Compre o Trator (nível 3)', prog: (s) => [has(s, 'tractor'), 1], reward: 100 },
+  { text: 'Deixe as plantas amadurecerem e sobreviva à 1ª noite', prog: (s) => [s.nights, 1], reward: 50 },
+  { text: 'Plante 10 Milhos-Artilheiros', prog: (s) => [s.stats.corn, 10], reward: 60 },
+  { text: 'Elimine 25 zumbis', prog: (s) => [s.stats.kills, 25], reward: 80 },
+  { text: 'Venda colheita no Mercado 📈', prog: (s) => [Math.min(s.stats.sold, 1), 1], reward: 40 },
+  { text: 'Sobreviva à 3ª noite', prog: (s) => [s.nights, 3], reward: 150 },
+  { text: 'Compre o Trator (atropela zumbis!)', prog: (s) => [has(s, 'tractor'), 1], reward: 100 },
+  { text: 'Compre o Lança-Sementes', prog: (s) => [has(s, 'seedgun'), 1], reward: 150 },
   { text: 'Compre um novo terreno', prog: (s) => [s.parcels.length, 2], reward: 150 },
-  { text: 'Colha 200 culturas', prog: (s) => [s.stats.harvested, 200], reward: 250 },
-  { text: 'Alcance o nível 5', prog: (s) => [s.level, 5], reward: 300 },
-  { text: 'Construa o Moinho', prog: (s) => [has(s, 'mill'), 1], reward: 400 },
-  { text: 'Produza 20 farinhas', prog: (s) => [s.stats.flour, 20], reward: 500 },
-  { text: 'Instale a Irrigação por Aspersão', prog: (s) => [has(s, 'sprinkler'), 1], reward: 800 },
-  { text: 'Tenha 4 terrenos', prog: (s) => [s.parcels.length, 4], reward: 1000 },
+  { text: 'Derrote o Colosso da 5ª noite', prog: (s) => [s.nights, 5], reward: 500 },
+  { text: 'Elimine 300 zumbis', prog: (s) => [s.stats.kills, 300], reward: 600 },
+  { text: 'Fortifique a casa 3 vezes', prog: (s) => [has(s, 'fort'), 3], reward: 800 },
+  { text: 'Sobreviva à 8ª noite', prog: (s) => [s.nights, 8], reward: 1500 },
   { text: 'Contrate os Colhedores Robôs', prog: (s) => [has(s, 'robots'), 1], reward: 1500 },
-  { text: 'Ganhe $50.000 no total', prog: (s) => [Math.floor(s.totalEarned), 50000], reward: 3000 },
-  { text: 'Construa a Prensa de Óleo', prog: (s) => [has(s, 'press'), 1], reward: 4000 },
-  { text: 'Alcance o nível 12', prog: (s) => [s.level, 12], reward: 8000 },
-  { text: 'Plante seu Legado da Terra (Loja → Legado)', prog: (s) => [s.prestiges, 1], reward: 0 },
-  { text: 'Tenha todos os 9 terrenos', prog: (s) => [s.parcels.length, 9], reward: 20000 },
-  { text: 'Ganhe $1.000.000 no total', prog: (s) => [Math.floor(s.totalEarned), 1000000], reward: 50000 },
+  { text: 'Derrote o Colosso da 10ª noite', prog: (s) => [s.nights, 10], reward: 4000 },
+  { text: 'Tenha 6 terrenos', prog: (s) => [s.parcels.length, 6], reward: 6000 },
+  { text: 'Sobreviva à 15ª noite', prog: (s) => [s.nights, 15], reward: 12000 },
+  { text: 'Sobreviva à 20ª noite — lenda do apocalipse', prog: (s) => [s.nights, 20], reward: 40000 },
 ];
 
-export const ERAS = ['Era Manual', 'Era Motorizada', 'Era Industrial', 'Era da Automação', 'Era Tecnológica'];
+export const ERAS = ['Sobrevivente', 'Motorizado', 'Fortaleza', 'Automação', 'Lenda'];
 export const ERA_ICONS = ['🧑‍🌾', '🚜', '🏭', '🤖', '🚀'];
 
 export const HAND_TOOLS = [
@@ -110,6 +116,7 @@ export const HAND_TOOLS = [
   { name: 'Sementes', icon: '🌱' },
   { name: 'Regador', icon: '💧' },
   { name: 'Foice', icon: '🌾' },
+  { name: 'Arma', icon: '🗡️' },
   { name: 'Multiuso', icon: '✨' },
 ];
 

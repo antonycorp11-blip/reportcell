@@ -231,3 +231,21 @@ body.inTractor #btnSprint { display: none; }
 
 #panel[data-kind=skills] { width: min(100%, 46em); }
 @media (orientation: portrait) { .tree { aspect-ratio: 1.1; } }
+
+/* ---------------- Apocalipse ---------------- */
+.bar.base i { background: linear-gradient(90deg, #ffcf7a, #d9822b); }
+.bar.hp i { background: linear-gradient(90deg, #ff8a8a, #d93a3a); }
+.meter.danger { background: #ffc9c0; animation: pulse 0.8s infinite; }
+#btnNight { position: absolute; left: 50%; transform: translateX(-50%); top: calc(84px + var(--st)); pointer-events: auto; padding: 0.45em 1.1em; border-radius: 99px; font-weight: 700; font-size: 0.85em; color: #e8f6ff; background: linear-gradient(#3c4f8a, #232c55); box-shadow: 0 3px 0 #151a33, 0 6px 14px rgba(0,0,0,0.3); }
+#hurt { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(200,0,0,0.65)); }
+body.isNight #crosshair { border-color: #ff6a5a; }
+.float.coin { color: #ffe35a; font-size: 0.95em; }
+.over { text-align: center; display: flex; flex-direction: column; gap: 0.3em; }
+.over .ic.big { font-size: 3.4em; }
+.over p { margin: 0.2em 0; }
+.logo .leaf { animation: none; }
+.sub { font-size: clamp(1em, 3vw, 1.6em); font-weight: 700; letter-spacing: 0.35em; color: #9dff7a; text-shadow: 0 3px 0 #1d3a12, 0 6px 18px rgba(0,0,0,0.5); margin-top: 0.15em; }
+#start { background: radial-gradient(ellipse at center, rgba(40,20,0,0.05), rgba(10,15,5,0.7)); }
+#playBtn { background: linear-gradient(#b8ff8a, #4fae3a); color: #133a0a; box-shadow: 0 6px 0 #2d6e1f, 0 14px 30px rgba(0,0,0,0.35); }
+@media (orientation: portrait) { #btnNight { top: calc(126px + var(--st)); } }
+@media (max-height: 400px) { #btnNight { top: calc(62px + var(--st)); font-size: 0.75em; } }

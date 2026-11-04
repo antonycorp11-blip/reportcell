@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <title>Terra Viva</title>
+  <title>Terra Viva: Última Colheita</title>
 </head>
 <body>
   <canvas id="c"></canvas>
@@ -42,10 +42,14 @@
 
     <div id="meters">
       <div class="meter" id="mClock"><span id="clockIcon">☀️</span><b id="clockTxt"></b></div>
+      <div class="meter" id="mBase"><span>🏠</span><div class="bar base"><i id="baseBar"></i></div></div>
+      <div class="meter" id="mHp"><span>❤️</span><div class="bar hp"><i id="hpBar"></i></div></div>
       <div class="meter" id="mCan"><span>💧</span><div class="bar water"><i id="canBar"></i></div></div>
       <div class="meter" id="mSilo"><span>🏚️</span><div class="bar silo"><i id="siloBar"></i></div><b id="siloTxt"></b></div>
     </div>
 
+    <button id="btnNight">🌙 Começar a noite</button>
+    <div id="hurt"></div>
     <div id="crosshair"></div>
     <div id="tileInfo" class="hidden"></div>
     <div id="combo"></div>
@@ -73,12 +77,13 @@
 
   <div id="start">
     <div class="startCard">
-      <div class="logo"><span class="leaf">🌱</span>Terra <b>Viva</b></div>
-      <p class="tag">Cultive, automatize e veja sua fazenda ganhar vida.</p>
+      <div class="logo"><span class="leaf">🧟</span>Terra <b>Viva</b></div>
+      <div class="sub">ÚLTIMA COLHEITA</div>
+      <p class="tag">O mundo acabou. Sua fazenda é a última terra viva.<br>Plante de dia — à noite, suas plantas ganham vida para lutar.</p>
       <button id="playBtn">▶ Jogar</button>
       <div class="tips">
         <div class="tTouch">🕹️ Joystick à esquerda · 👆 arraste à direita para olhar · ⛏️ botão para usar</div>
-        <div class="tDesk">WASD andar · Mouse olhar · Clique usar · E interagir · 1-5 ferramentas · B loja · M mercado · K habilidades · V câmera do trator</div>
+        <div class="tDesk">WASD andar · Mouse olhar · Clique usar · E interagir · 1-5 ferramentas · B loja · M mercado · K habilidades · V câmera · N começar a noite</div>
       </div>
       <p class="rotate">📱 Gire o celular para paisagem para a melhor experiência</p>
     </div>
