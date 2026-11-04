@@ -340,8 +340,16 @@ export function setPhase(phase: 'day' | 'night', n: number, left: number, zombie
   $('phase').classList.toggle('night', night);
   $('clockIcon').textContent = night ? '🧟' : raining ? '🌧️' : '☀️';
   const m = Math.floor(Math.max(0, left) / 60), sec = Math.floor(Math.max(0, left) % 60);
-  $('clockTxt').innerHTML = night ? `NOITE ${n} <span>· 🧟 ${zombies}</span>` : `DIA ${n} <span>· noite em ${m}:${String(sec).padStart(2, '0')}</span>`;
+  $('clockTxt').innerHTML = night ? `<span class="cl">NOITE ${n}</span><b class="cd">🧟 ${zombies}</b>` : `<span class="cl">DIA ${n} · ANOITECE EM</span><b class="cd ${left <= 30 ? 'hot' : ''}">${m}:${String(sec).padStart(2, '0')}</b>`;
   $('btnNight').classList.toggle('hidden', night);
+}
+
+let bigT: ReturnType<typeof setTimeout> | undefined;
+export function bigCount(n: number) {
+  const el = $('bigCount');
+  el.textContent = String(n);
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  clearTimeout(bigT); bigT = setTimeout(() => el.classList.remove('show'), 900);
 }
 
 export function setPreview(html: string) {

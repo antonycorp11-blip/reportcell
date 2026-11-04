@@ -33,8 +33,8 @@ export interface State {
   walls: { type: number; x: number; z: number; rot: number; hp: number }[];
 }
 
-export const DAY_LEN = 110;
-export const dayLen = (nights: number) => (nights === 0 ? 110 : 85);
+export const DAY_LEN = 240;
+export const dayLen = (nights: number) => (nights === 0 ? 240 : 180);
 /** multiplicador de dificuldade: [quantidade, vida, dano] */
 export const diffK = () => ({ easy: [0.65, 0.7, 0.7], normal: [1, 1, 1], hard: [1.35, 1.4, 1.3] }[game.s.settings.diff ?? 'normal']);
 

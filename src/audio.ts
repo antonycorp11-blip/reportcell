@@ -79,6 +79,8 @@ export const sfx = {
   boom() { noise(0.9, 0.6, 400); tone(80, 0.7, 'sine', 0.4, 30); },
   groan(big: boolean) { const f = big ? 70 : 110 + Math.random() * 40; tone(f, 0.9, 'sawtooth', 0.05, f * 0.7); tone(f * 1.5, 0.8, 'sine', 0.03, f); },
   night() { tone(110, 2.2, 'sawtooth', 0.06, 82); tone(165, 2.2, 'sine', 0.05, 123); tone(55, 2.5, 'sine', 0.12); },
+  siren() { for (let i = 0; i < 3; i++) { tone(520, 0.55, 'sawtooth', 0.05, 820, i * 0.6); tone(820, 0.45, 'sawtooth', 0.04, 520, i * 0.6 + 0.3); } },
+  heart() { tone(70, 0.12, 'sine', 0.35, 50); tone(65, 0.12, 'sine', 0.28, 45, 0.18); },
   gameover() { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.5, 'triangle', 0.14, 0, i * 0.28)); },
 };
 

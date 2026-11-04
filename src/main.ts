@@ -22,6 +22,7 @@ import { LaneView, LMAP, lanesFor } from './lanes';
 import { Creatures } from './creatures';
 import { faceMats } from './zmodels';
 import { Minimap } from './minimap';
+import { Post } from './post';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
@@ -55,6 +56,7 @@ const vmHemi = new THREE.HemisphereLight(0xffffff, 0x667744, 1.5);
 const vmSun = new THREE.DirectionalLight(0xffffff, 2);
 vmScene.add(vmHemi, vmSun, vmSun.target);
 
+const post = new Post(renderer, scene, vmScene, camera, high);
 const fx = new FX(scene);
 const world = new World(scene, fx, high);
 const view = new FarmView(scene, high);
@@ -635,6 +637,8 @@ function spawnOne(e: WaveEntry) {
 
 function startNight() {
   if (s.phase === 'night' || over) return;
+  world.danger = 0;
+  document.body.classList.remove('warn');
   if (s.phaseT > 5) {
     const bonus = Math.round(s.phaseT * (1 + s.nights * 0.6));
     earn(bonus);
@@ -678,7 +682,11 @@ function endNight() {
 function updatePhase(dt: number) {
   if (over) return;
   if (s.phase === 'day') {
+    const prevT = s.phaseT;
     s.phaseT -= dt;
+    world.danger = Math.max(0, Math.min(1, 1 - s.phaseT / 30));
+    if (prevT > 30 && s.phaseT <= 30) { ui.banner('🌙 A NOITE ESTÁ CHEGANDO!', '30 segundos — termine de plantar e prepare as defesas'); sfx.siren(); document.body.classList.add('warn'); }
+    if (s.phaseT <= 10 && Math.ceil(prevT) !== Math.ceil(s.phaseT) && s.phaseT > 0) { ui.bigCount(Math.ceil(s.phaseT)); sfx.heart(); }
     if (s.phaseT <= 0) startNight();
     const p = 1 - Math.max(0, s.phaseT) / dayLen(s.nights);
     visDay += (0.1 + 0.58 * p - visDay) * Math.min(1, dt * 1.5);
@@ -1143,9 +1151,8 @@ function frame(now: number) {
   vmSun.position.copy(camera.position).addScaledVector(world.sunDir, 10);
   vmSun.target.position.copy(camera.position);
 
-  renderer.clear();
-  renderer.render(scene, camera);
-  if (playing && !s.inTractor && !aerial) { renderer.clearDepth(); renderer.render(vmScene, camera); }
+  post.setVM(playing && !s.inTractor && !aerial);
+  post.render(world.night, world.danger, 0);
 }
 renderer.setAnimationLoop(frame);
 
@@ -1153,6 +1160,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  post.setSize(window.innerWidth, window.innerHeight);
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) doSave(); });
 window.addEventListener('pagehide', doSave);

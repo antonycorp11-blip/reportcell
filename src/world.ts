@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { part, merge, cone, cyl, ico, box, bx, mat, windMat, rng, fbm, heightAt, Sign, prism, dotTexture, shade, planarUV, noiseTexture } from './gfx';
 import { GrassField } from './grass';
-import { scaledOutline, addOutlines } from './gfx';
+import { scaledOutline, addOutlines, GRAD } from './gfx';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { windOutline } from './toon';
 import { colliders } from './physics';
 import { PARCELS, owned, setRain, tileX, tileZ, randomRipe, PN, TILE, isNextParcel } from './farm';
@@ -78,6 +79,8 @@ export class World {
   private chimT = 0;
   sunDir = new THREE.Vector3();
   fogMult = 1;
+  /** 0..1: a noite está chegando */
+  danger = 0;
   private fogK = 1;
   night = 0;
 
@@ -681,18 +684,31 @@ export class World {
 
   private buildClouds() {
     const r = rng(8);
-    const cm = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.25, flatShading: true, fog: false });
-    for (let i = 0; i < 16; i++) {
+    const cm = new THREE.MeshToonMaterial({ color: 0xffffff, emissive: 0xc8d8ff, emissiveIntensity: 0.35, gradientMap: GRAD, fog: false });
+    const om = new THREE.MeshBasicMaterial({ color: 0x5a6a8a, side: THREE.BackSide, fog: false });
+    for (let i = 0; i < 18; i++) {
       const P: THREE.BufferGeometry[] = [];
-      const n = 3 + ((r() * 4) | 0);
-      for (let k = 0; k < n; k++) P.push(part(ico(4 + r() * 5, 0), 0xffffff, [k * 5 - n * 2.5, r() * 2, (r() - 0.5) * 6], [r(), r(), r()], [1, 0.6, 1]));
+      const n = 4 + ((r() * 4) | 0);
+      for (let k = 0; k < n; k++) {
+        const rad = 5 + r() * 6 * (1 - Math.abs(k - n / 2) / n);
+        const sg = new THREE.SphereGeometry(rad, 14, 10);
+        sg.translate(k * 6 - n * 3, rad * 0.35 + r() * 2, (r() - 0.5) * 6);
+        P.push(sg);
+      }
+      const flat = new THREE.SphereGeometry(n * 3.4, 18, 8); flat.scale(1, 0.22, 0.45); flat.translate(0, 1, 0);
+      P.push(flat);
+      for (const p of P) { p.deleteAttribute('uv'); }
+      const geo = mergeGeometries(P)!;
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(merge(P), cm));
-      g.position.set((r() - 0.5) * 700, 90 + r() * 50, (r() - 0.5) * 700);
+      g.add(new THREE.Mesh(geo, cm));
+      const o = new THREE.Mesh(geo, om); o.scale.setScalar(1.04); g.add(o);
+      g.position.set((r() - 0.5) * 700, 95 + r() * 55, (r() - 0.5) * 700);
+      g.rotation.y = r() * 6;
       this.clouds.push(g);
       this.scene.add(g);
     }
   }
+
 
   private buildBirds() {
     const r = rng(12);
@@ -856,6 +872,7 @@ export class World {
     const hor = new THREE.Color().copy(NIGHT_HOR).lerp(DAY_HOR, dayF).lerp(GOLD, goldF * 0.65 * Math.max(dayF, 0.3));
     const rf = this.rainF;
     top.lerp(RAIN, rf * 0.6 * dayF); hor.lerp(RAIN, rf * 0.6 * dayF);
+    if (this.danger > 0) { top.lerp(new THREE.Color(0x6a2a4a), this.danger * 0.55); hor.lerp(new THREE.Color(0xff5a2a), this.danger * 0.6); }
     this.skyMat.uniforms.top.value.copy(top);
     this.skyMat.uniforms.hor.value.copy(hor);
     this.skyMat.uniforms.sunDir.value.copy(this.sunDir);
@@ -917,7 +934,7 @@ export class World {
     for (const c of this.clouds) {
       c.position.x += dt * 2.5;
       if (c.position.x > 380) c.position.x = -380;
-      (c.children[0] as THREE.Mesh).scale.setScalar(1 + rf * 0.3);
+      c.scale.setScalar(1 + rf * 0.3);
     }
 
     // Pássaros
