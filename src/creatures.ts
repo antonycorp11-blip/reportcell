@@ -82,6 +82,50 @@ const faces = {
   }),
 };
 
+/** Posição dos olhos/boca de cada rosto (para piscar e cara de ataque). */
+const FSPOT: Record<string, { eyes: [number, number, number][]; my: number; iris: string }> = {
+  wheat: { eyes: [[88, 118, 40], [168, 118, 40]], my: 188, iris: '#5a8a2a' },
+  corn: { eyes: [[90, 120, 36], [166, 124, 36]], my: 184, iris: '#3f7ad8' },
+  sun: { eyes: [], my: 180, iris: '#ffe94a' },
+  pumpkin: { eyes: [], my: 200, iris: '#ffd23a' },
+  berry: { eyes: [[92, 118, 40], [166, 118, 40]], my: 180, iris: '#2a9a3a' },
+  lav: { eyes: [[92, 118, 34], [164, 118, 34]], my: 178, iris: '#9a5ad8' },
+  cactus: { eyes: [[90, 124, 32], [166, 124, 32]], my: 182, iris: '#3a7a2a' },
+  pepper: { eyes: [[88, 112, 34], [168, 112, 34]], my: 190, iris: '#ff8a1a' },
+};
+/** Variações do rosto: 1 = piscando, 2 = atacando (bravo, boca aberta). */
+function moodTex(kind: keyof typeof faces, mood: 1 | 2): THREE.Texture {
+  const base = faces[kind]().image as HTMLCanvasElement;
+  const sp = FSPOT[kind];
+  return faceTex(kind + '-m' + mood, (x) => {
+    x.drawImage(base, 0, 0);
+    if (mood === 1) {
+      for (const [cx, cy, r] of sp.eyes) {
+        x.clearRect(cx - r - 6, cy - r - 4, (r + 6) * 2, r * 2 + 8);
+        x.strokeStyle = K; x.lineWidth = 9; x.beginPath(); x.arc(cx, cy - 6, r * 0.75, 0.2 * Math.PI, 0.8 * Math.PI); x.stroke();
+      }
+      return;
+    }
+    if (kind === 'sun') {
+      x.shadowColor = '#fff27a'; x.shadowBlur = 30; x.fillStyle = '#ffffff';
+      x.fillRect(48, 102, 62, 22); x.fillRect(146, 102, 62, 22); x.shadowBlur = 0;
+    } else if (kind === 'pumpkin') {
+      x.shadowColor = '#ff7a1a'; x.shadowBlur = 30; x.globalCompositeOperation = 'lighter'; x.drawImage(base, 0, 0); x.globalCompositeOperation = 'source-over'; x.shadowBlur = 0;
+      return;
+    } else {
+      for (const [cx, cy, r] of sp.eyes) x.clearRect(cx - r - 6, cy - r - 30, (r + 6) * 2, r * 2 + 34);
+      sp.eyes.forEach(([cx, cy, r], i) => {
+        const sgn = i === 0 ? 1 : -1;
+        eye(x, cx, cy + 4, r * 0.8, r * 0.85, { px: 0, py: 0.1, pr: r * 0.32, iris: sp.iris, glow: sp.iris, lid: 0.55, lidAng: sgn * 0.45 });
+        brow(x, cx - sgn * r * 0.95, cy - r * 0.9, cx + sgn * r * 0.75, cy - r * 0.35, 15);
+      });
+    }
+    // boca gritando
+    x.clearRect(70, sp.my - 30, 116, 64);
+    mouth(x, [[78, sp.my - 18], [178, sp.my - 18], [166, sp.my + 22], [128, sp.my + 32], [90, sp.my + 22]], '#3a0808', 6, true);
+  });
+}
+
 // ---------------------------------------------------------------- modelos
 function legs(P: G[], col: number, y = 0.0, spread = 0.12) {
   for (const sx of [-1, 1]) {
@@ -212,7 +256,7 @@ function pepper(): Model {
 
 const STAR = (() => { const g = new THREE.OctahedronGeometry(0.13, 0); g.scale(1, 1, 0.4); return g; })();
 
-interface Set { body: THREE.InstancedMesh; bodyO: THREE.InstancedMesh; head: THREE.InstancedMesh; headO: THREE.InstancedMesh; face: THREE.InstancedMesh; glow: THREE.InstancedMesh | null; model: Model }
+interface Set { body: THREE.InstancedMesh; bodyO: THREE.InstancedMesh; head: THREE.InstancedMesh; headO: THREE.InstancedMesh; face: THREE.InstancedMesh; faceB: THREE.InstancedMesh; faceA: THREE.InstancedMesh; glow: THREE.InstancedMesh | null; model: Model }
 
 /** Plantas-criaturas: as culturas maduras se transformam à noite. */
 export class Creatures {
@@ -233,6 +277,7 @@ export class Creatures {
 
   constructor(scene: THREE.Scene, private fx: FX, high: boolean) {
     const models = [wheat(), corn(), sun(), pumpkin(), berry(), lav(), cactus(), pepper()];
+    const KINDS = ['wheat', 'corn', 'sun', 'pumpkin', 'berry', 'lav', 'cactus', 'pepper'] as const;
     const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     const mk = (g: G, m: THREE.Material, shadow = false) => {
       const im = new THREE.InstancedMesh(g, m, N);
@@ -243,12 +288,14 @@ export class Creatures {
     for (let ci = 0; ci < CROPS.length; ci++) {
       const cd = CROPS[ci];
       const md = models[cd.base ?? ci];
-      const faceMat = new THREE.MeshBasicMaterial({ map: md.tex, transparent: true, alphaTest: 0.3, depthWrite: false, color: 0xeeeeee });
+      const fm = (tex: THREE.Texture) => new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.3, depthWrite: false, color: 0xeeeeee });
+      const faceMat = fm(md.tex);
+      const kind = KINDS[cd.base ?? ci];
       const bm = cd.tint ? toon({ color: cd.tint }) : TOON;
       this.sets.push({
         body: mk(md.body, bm, true), bodyO: mk(hull(md.body, 0.03), OUTLINE),
         head: mk(md.head, bm, true), headO: mk(hull(md.head, 0.03), OUTLINE),
-        face: mk(md.face, faceMat), glow: md.glow ? mk(md.glow, glowMat) : null, model: md,
+        face: mk(md.face, faceMat), faceB: mk(md.face, fm(moodTex(kind, 1))), faceA: mk(md.face, fm(moodTex(kind, 2))), glow: md.glow ? mk(md.glow, glowMat) : null, model: md,
       });
     }
     this.stars = new THREE.InstancedMesh(STAR, new THREE.MeshBasicMaterial({ color: 0xffd23f }), N * 3);
@@ -261,6 +308,7 @@ export class Creatures {
   update(dt: number, night: boolean, time: number, cam: THREE.Vector3) {
     this.nightT = night ? this.nightT + dt : 0;
     const counts = new Array(this.sets.length).fill(0);
+    const fcount = this.sets.map(() => [0, 0, 0]);
     const BASE = CROPS.map((cd, i) => cd.base ?? i);
     let ns = 0;
     let changed = false;
@@ -319,7 +367,11 @@ export class Creatures {
       this.h4.premultiply(this.m4);
       const i = counts[c]++;
       set.body.setMatrixAt(i, this.m4); set.bodyO.setMatrixAt(i, this.m4);
-      set.head.setMatrixAt(i, this.h4); set.headO.setMatrixAt(i, this.h4); set.face.setMatrixAt(i, this.h4);
+      set.head.setMatrixAt(i, this.h4); set.headO.setMatrixAt(i, this.h4);
+      // expressão: bravo ao atacar/mirar perto, pisca de vez em quando
+      const mood = pu > 0.05 || this.charge[t] > 0.15 || (tg && (tg.x - x) ** 2 + (tg.z - z) ** 2 < 49) ? 2 : (time * 0.9 + t * 0.618) % 3.3 < 0.14 ? 1 : 0;
+      const fmsh = mood === 2 ? set.faceA : mood === 1 ? set.faceB : set.face;
+      fmsh.setMatrixAt(fcount[c][mood]++, this.h4);
       set.glow?.setMatrixAt(i, this.h4);
       if (lvl > 0 && a > 0.9) {
         for (let si = 0; si < lvl; si++) {
@@ -331,10 +383,11 @@ export class Creatures {
       }
     }
     this.sets.forEach((st, i) => {
-      for (const m of [st.body, st.bodyO, st.head, st.headO, st.face, st.glow]) {
+      for (const m of [st.body, st.bodyO, st.head, st.headO, st.glow]) {
         if (!m) continue;
         m.count = counts[i]; m.instanceMatrix.needsUpdate = true;
       }
+      [st.face, st.faceB, st.faceA].forEach((m, k) => { m.count = fcount[i][k]; m.instanceMatrix.needsUpdate = true; });
     });
     this.stars.count = ns; this.stars.instanceMatrix.needsUpdate = true;
     if (changed) markDirty();
