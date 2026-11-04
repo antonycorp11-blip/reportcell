@@ -275,7 +275,7 @@ ui.initUI({
   learn(id) {
     if (!learn(id)) { sfx.error(); return; }
     sfx.buy();
-    ui.toast(`${NMAP[id].icon} ${NMAP[id].name} desbloqueado!`, 'good');
+    ui.toast(`⭐ ${NMAP[id].name} desbloqueado!`, 'good');
     tractor.setMode(s.implement, implWidth());
     fx.spawn(player.pos.x, 2, player.pos.z, 0xffd23f, 25, 1.5, 5, 6, 1.2);
     hudDirty = true;
@@ -1003,6 +1003,7 @@ function gradeHtml(g: string, lost: number, reward: number): string {
   return `<div class="grade"><div class="gl" style="--c:${col}">${g}</div><div class="gi"><b>Noite ${s.nights} sobrevivida</b><p>${msg}</p>
     <p class="gs">Família ferida: <b>${Math.round(lost * 100)}%</b> · Zumbis eliminados: <b>${s.stats.kills}</b></p></div></div>
     <p class="note">Espólios que os zumbis deixaram cair:</p><div class="loot">${loot}</div>
+    <p class="ptsg">⭐ +1 ponto de habilidade (☰ → Habilidades)</p>
     <div class="diary">${icon('talk')}<div><b>Diário do pai — dia ${s.nights}</b><p>${diaryFor(s.nights)}</p></div></div>
     <p class="rew">Recompensa: <b>${fmt(reward)}</b> (nota ${g} ×${{ S: 2, A: 1.5, B: 1.2, C: 1 }[g]})</p>
     <button class="big" data-a="close">☀️ Começar o dia ${s.nights + 1}</button>`;

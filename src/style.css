@@ -543,3 +543,32 @@ body.warn #hud #phase { background: rgba(70, 10, 10, 0.85); border-color: #ff5a3
 .ending h2 { margin: 0; }
 .ending p { margin: 0.1em 0; }
 .big.alt { background: linear-gradient(#bfe6ff, #4ab6ff); box-shadow: 0 4px 0 #2a7ab0; color: #0a2a4a; }
+
+/* árvore: ícones e pontos */
+.sn .svgi { width: 26px; height: 26px; color: color-mix(in srgb, var(--c) 55%, #8a8a8a); }
+.sn.key .svgi { width: 32px; height: 32px; }
+.sn.root .svgi { width: 50px; height: 50px; color: #0f2a0a; }
+.sn.canbuy .svgi, .sn.reach .svgi { color: var(--c); }
+.sn.own .svgi { color: #10200a; }
+.sn span { display: grid; place-items: center; filter: none !important; }
+.sn.lock { opacity: 0.6; }
+.blabel .svgi { width: 1em; height: 1em; }
+.sinfo .si .svgi { width: 1.3em; height: 1.3em; color: #10200a; }
+.spts { position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; background: rgba(8, 14, 9, 0.82); border: 1px solid rgba(157,255,122,0.25); border-radius: 14px; padding: 8px 10px; color: #dfeedd; font-size: 0.72em; max-width: 46%; pointer-events: none; }
+.spt { display: flex; align-items: baseline; gap: 6px; }
+.spt b { font-size: 1.6em; color: #ffd23f; }
+.sways { display: flex; flex-direction: column; gap: 2px; }
+.sways span { display: flex; align-items: center; gap: 5px; }
+.sways .svgi { color: #9dff7a; width: 1.15em; height: 1.15em; }
+.sways em { color: #9fb09a; font-style: normal; }
+.snext { display: flex; align-items: center; gap: 6px; color: #9fb09a; }
+.snext i { flex: 1; height: 5px; border-radius: 99px; background: linear-gradient(90deg, #ffd23f var(--w), rgba(255,255,255,0.12) var(--w)); }
+.shint { top: auto; bottom: 8px; }
+.ptsg { text-align: center; color: #b07a10; font-weight: 600; margin: 0; font-size: 0.9em; }
+.sworld .sn span { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; place-items: center; }
+.sworld .sn .svgi { width: 28px !important; height: 28px !important; vertical-align: 0; stroke-width: 2.2; }
+.sworld .sn.key .svgi { width: 34px !important; height: 34px !important; }
+.sworld .sn.root .svgi { width: 52px !important; height: 52px !important; }
+.sworld .sn i { z-index: 1; }
+.sworld .sn .svgi { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.sworld .sn { padding: 0; }

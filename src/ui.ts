@@ -102,7 +102,7 @@ export function togglePanel(p: typeof panel) { if (panel === p) closePanel(); el
 
 let lastPanelRender = 0;
 export function refreshPanel(force = false) {
-  if (!panel || panel === 'welcome' || panel === 'menu' || panel === 'hub') return;
+  if (!panel || panel === 'welcome' || panel === 'menu' || panel === 'hub' || panel === 'skills' || panel === 'npc' || panel === 'grade' || panel === 'over') return;
   const now = performance.now();
   if (!force && now - lastPanelRender < 300) return;
   renderPanel();
@@ -225,17 +225,19 @@ function skillTree(): string {
     const own = has(n.id);
     const av = available(n.id);
     const st = own ? 'own' : av ? (fp >= n.cost ? 'canbuy' : 'reach') : 'lock';
-    return `<button class="sn ${st} ${n.key ? 'key' : ''} ${n.id === 'root' ? 'root' : ''} ${selSkill === n.id ? 'sel' : ''}" data-a="node" data-v="${n.id}" style="left:${n.x + TW / 2}px;top:${n.y + TW / 2}px;--c:${C(n)}"><span>${n.icon}</span>${n.key && !own ? `<i>${n.cost}⭐</i>` : ''}</button>`;
+    return `<button class="sn ${st} ${n.key ? 'key' : ''} ${n.id === 'root' ? 'root' : ''} ${selSkill === n.id ? 'sel' : ''}" data-a="node" data-v="${n.id}" style="left:${n.x + TW / 2}px;top:${n.y + TW / 2}px;--c:${C(n)}"><span>${icon(n.icon)}</span>${n.key && !own ? `<i>${n.cost}⭐</i>` : ''}</button>`;
   }).join('');
-  const labels = BRANCHES.map((b) => `<div class="blabel" style="left:${Math.cos(b.angle) * 830 + TW / 2}px;top:${Math.sin(b.angle) * 830 + TW / 2}px;color:${b.color}">${b.icon} ${b.name}</div>`).join('');
+  const labels = BRANCHES.map((b) => `<div class="blabel" style="left:${Math.cos(b.angle) * 830 + TW / 2}px;top:${Math.sin(b.angle) * 830 + TW / 2}px;color:${b.color}">${icon(b.icon)} ${b.name}</div>`).join('');
   const n = NMAP[selSkill] ?? NMAP.root;
   const own = has(n.id);
   const lock = own ? null : lockReason(n.id);
-  const info = `<div class="sinfo" style="--c:${C(n)}"><div class="si">${n.icon}</div><div class="it"><b>${n.name}${n.key ? ' <span class="kt">NÓ-CHAVE</span>' : ''}</b><p>${n.desc}</p></div>
+  const info = `<div class="sinfo" style="--c:${C(n)}"><div class="si">${icon(n.icon)}</div><div class="it"><b>${n.name}${n.key ? ' <span class="kt">NÓ-CHAVE</span>' : ''}</b><p>${n.desc}</p></div>
     ${own ? '<div class="done">✔</div>' : `<button class="buy" data-a="learn" data-v="${n.id}" ${lock ? 'disabled' : ''}>${lock && lock.startsWith('Requer') ? '🔒' : 'Desbloquear'}<br>${n.cost} ⭐</button>`}</div>`;
-  void s;
   return `<div class="stree" id="stree"><div class="sworld" id="sworld" style="width:${TW}px;height:${TW}px">
       <svg width="${TW}" height="${TW}" viewBox="${-TW / 2} ${-TW / 2} ${TW} ${TW}">${lines}</svg>${labels}${nodes}</div>
+      <div class="spts"><div class="spt"><b>⭐ ${fp}</b><span>ponto${fp === 1 ? '' : 's'} livre${fp === 1 ? '' : 's'}</span></div>
+        <div class="sways"><span>${icon('star')} +1 a cada nível <em>(nv ${s.level})</em></span><span>${icon('moon')} +1 por noite sobrevivida <em>(${s.nights})</em></span><span>${icon('earth')} +1 por Legado <em>(${s.legacy})</em></span></div>
+        <div class="snext">Próximo nível: <i style="--w:${Math.min(100, (s.xp / xpNeed(s.level)) * 100)}%"></i></div></div>
       <div class="shint">Arraste para explorar · pinça ou roda para zoom</div></div>${info}`;
 }
 

@@ -6,9 +6,9 @@ export interface SNode {
 }
 
 export const BRANCHES = [
-  { name: 'Fúria Verde', icon: '🌿', color: '#7dff5a', angle: -Math.PI / 2 },
-  { name: 'Cultivo', icon: '🌾', color: '#ffcf3a', angle: Math.PI / 6 },
-  { name: 'Sobrevivência', icon: '🛡️', color: '#4ac8ff', angle: (Math.PI * 5) / 6 },
+  { name: 'Fúria Verde', icon: 'leaf', color: '#7dff5a', angle: -Math.PI / 2 },
+  { name: 'Cultivo', icon: 'wheat', color: '#ffcf3a', angle: Math.PI / 6 },
+  { name: 'Sobrevivência', icon: 'shield', color: '#4ac8ff', angle: (Math.PI * 5) / 6 },
 ];
 
 const STAT_TXT: Record<string, (v: number) => string> = {
@@ -38,35 +38,35 @@ const isKey = (d: Def) => d.length === 4;
 const TREE: { spine: Def[]; forkA: { at: number; nodes: Def[] }; forkB: { at: number; nodes: Def[] } }[] = [
   {
     spine: [
-      ['f1', 'Seiva Brava', '🗡️', 'pdmg', 6], ['f2', 'Casca Grossa', '🪵', 'php', 10], ['f3', 'Espinhos Afiados', '🌵', 'pdmg', 6],
-      ['f4', 'Raízes Longas', '📡', 'range', 6], ['f5', 'Ódio Vegetal', '😡', 'pdmg', 8], ['f6', 'Clorofila Turbo', '⚡', 'rate', 8],
-      ['d2', 'Fotossíntese Furiosa', '☀️', 'Plantas atacam +25% mais rápido e o laser do girassol atravessa zumbis'],
+      ['f1', 'Seiva Brava', 'sword', 'pdmg', 6], ['f2', 'Casca Grossa', 'shield', 'php', 10], ['f3', 'Espinhos Afiados', 'fist', 'pdmg', 6],
+      ['f4', 'Raízes Longas', 'satellite', 'range', 6], ['f5', 'Ódio Vegetal', 'flame', 'pdmg', 8], ['f6', 'Clorofila Turbo', 'bolt', 'rate', 8],
+      ['d2', 'Fotossíntese Furiosa', 'sun', 'Plantas atacam +25% mais rápido e o laser do girassol atravessa zumbis'],
     ],
-    forkA: { at: 1, nodes: [['f7', 'Fibra Dura', '🛡️', 'php', 12], ['f8', 'Seiva Curativa', '💚', 'php', 12], ['d1', 'Raízes de Aço', '⛓️', 'Plantas ganham +50% de vida e se curam durante a noite']] },
-    forkB: { at: 3, nodes: [['f9', 'Pólen Certeiro', '🎯', 'range', 8], ['f10', 'Fúria Ancestral', '🔥', 'pdmg', 8], ['d3', 'Veteranas', '🎖️', 'Plantas sobem de nível com metade dos abates']] },
+    forkA: { at: 1, nodes: [['f7', 'Fibra Dura', 'shield', 'php', 12], ['f8', 'Seiva Curativa', 'heart', 'php', 12], ['d1', 'Raízes de Aço', 'chain', 'Plantas ganham +50% de vida e se curam durante a noite']] },
+    forkB: { at: 3, nodes: [['f9', 'Pólen Certeiro', 'target', 'range', 8], ['f10', 'Fúria Ancestral', 'flame', 'pdmg', 8], ['d3', 'Veteranas', 'medal', 'Plantas sobem de nível com metade dos abates']] },
   },
   {
     spine: [
-      ['g1', 'Mão Verde', '🌱', 'growth', 6], ['g2', 'Colheita Farta', '🧺', 'yield', 8], ['g3', 'Adubo Vivo', '🧪', 'growth', 6],
-      ['a4', 'Rotação Mestre', '♻️', 'Rotação de culturas dá o dobro de fertilidade e repetir cansa menos o solo'],
-      ['g4', 'Celeiro Cheio', '🌽', 'yield', 8], ['g5', 'Sol Generoso', '🌞', 'growth', 8],
-      ['a6', 'Safra Dourada', '✨', '6% de chance de colheita dourada: produção ×5'],
+      ['g1', 'Mão Verde', 'sprout', 'growth', 6], ['g2', 'Colheita Farta', 'basket', 'yield', 8], ['g3', 'Adubo Vivo', 'leaf', 'growth', 6],
+      ['a4', 'Rotação Mestre', 'recycle', 'Rotação de culturas dá o dobro de fertilidade e repetir cansa menos o solo'],
+      ['g4', 'Celeiro Cheio', 'wheat', 'yield', 8], ['g5', 'Sol Generoso', 'sun', 'growth', 8],
+      ['a6', 'Safra Dourada', 'star', '6% de chance de colheita dourada: produção ×5'],
     ],
-    forkA: { at: 1, nodes: [['g6', 'Braço Forte', '💪', 'tool', 12], ['g7', 'Motor Afinado', '🔩', 'tractor', 12], ['m4', 'Piloto GPS', '🛰️', 'O trator se alinha sozinho nas fileiras e centraliza nos canteiros'], ['m6', 'Implemento Duplo', '🚜', '+2 fileiras de largura em todos os implementos']] },
-    forkB: { at: 3, nodes: [['g8', 'Regador Fundo', '🪣', 'can', 6], ['g9', 'Raízes Profundas', '💧', 'water', 15], ['m5', 'Regador Mágico', '🚿', 'O regador se enche sozinho aos poucos'], ['a5', 'Dança da Chuva', '🌧️', 'Chove com mais frequência e mais forte']] },
+    forkA: { at: 1, nodes: [['g6', 'Braço Forte', 'fist', 'tool', 12], ['g7', 'Motor Afinado', 'gear', 'tractor', 12], ['m4', 'Piloto GPS', 'satellite', 'O trator se alinha sozinho nas fileiras e centraliza nos canteiros'], ['m6', 'Implemento Duplo', 'tractor', '+2 fileiras de largura em todos os implementos']] },
+    forkB: { at: 3, nodes: [['g8', 'Regador Fundo', 'bucket', 'can', 6], ['g9', 'Raízes Profundas', 'drop', 'water', 15], ['m5', 'Regador Mágico', 'drop', 'O regador se enche sozinho aos poucos'], ['a5', 'Dança da Chuva', 'rain', 'Chove com mais frequência e mais forte']] },
   },
   {
     spine: [
-      ['s1', 'Pá Pesada', '⚒️', 'udmg', 12], ['s2', 'Couro Grosso', '❤️', 'uhp', 20], ['s3', 'Tijolo Extra', '🧱', 'base', 10],
-      ['s4', 'Caçador', '💰', 'kill', 10], ['s5', 'Golpe Certeiro', '🎯', 'udmg', 15], ['s6', 'Muralhas', '🏰', 'base', 12],
-      ['d4', 'Fortaleza Viva', '🏠', 'A casa se regenera 3 de vida por segundo durante a noite'],
+      ['s1', 'Pá Pesada', 'hammer', 'udmg', 12], ['s2', 'Couro Grosso', 'heart', 'uhp', 20], ['s3', 'Tijolo Extra', 'brick', 'base', 10],
+      ['s4', 'Caçador', 'coin', 'kill', 10], ['s5', 'Golpe Certeiro', 'target', 'udmg', 15], ['s6', 'Muralhas', 'castle', 'base', 12],
+      ['d4', 'Fortaleza Viva', 'house', 'A casa se regenera 3 de vida por segundo durante a noite'],
     ],
-    forkA: { at: 1, nodes: [['s7', 'Passo Ligeiro', '👟', 'walk', 8], ['s8', 'Fôlego', '🫁', 'uhp', 25], ['c4', 'Combo Lucrativo', '🔥', 'Bônus de combo de colheita em dobro']] },
-    forkB: { at: 3, nodes: [['s9', 'Lábia', '🗣️', 'sell', 6], ['s10', 'Contatos', '📇', 'order', 20], ['c5', 'Investidor', '🏦', 'Rende juros: +0,5% do seu dinheiro a cada minuto'], ['c6', 'Magnata', '👑', '+15% em todas as vendas']] },
+    forkA: { at: 1, nodes: [['s7', 'Passo Ligeiro', 'boot', 'walk', 8], ['s8', 'Fôlego', 'wind', 'uhp', 25], ['c4', 'Combo Lucrativo', 'flame', 'Bônus de combo de colheita em dobro']] },
+    forkB: { at: 3, nodes: [['s9', 'Lábia', 'talk', 'sell', 6], ['s10', 'Contatos', 'basket', 'order', 20], ['c5', 'Investidor', 'bank', 'Rende juros: +0,5% do seu dinheiro a cada minuto'], ['c6', 'Magnata', 'crown', '+15% em todas as vendas']] },
   },
 ];
 
-export const NODES: SNode[] = [{ id: 'root', branch: -1, name: 'Coração da Terra', icon: '🌍', desc: 'A última terra viva. Tudo começa aqui.', cost: 0, parent: null, x: 0, y: 0 }];
+export const NODES: SNode[] = [{ id: 'root', branch: -1, name: 'Coração da Terra', icon: 'earth', desc: 'A última terra viva. Tudo começa aqui. Desbloqueie os nós ligados a ele com pontos ⭐.', cost: 0, parent: null, x: 0, y: 0 }];
 const R = 92;
 TREE.forEach((br, b) => {
   const A = BRANCHES[b].angle;

@@ -1,5 +1,7 @@
 # 🧟 Terra Viva: Última Colheita
 
+A *Chuva Verde* caiu misturada com os agrotóxicos das lavouras: quem se molhou vira zumbi à noite, e a mesma água deu vida às plantas. Você fugiu da cidade com a família para a fazenda do Vô Zé.
+
 O mundo acabou. Sua fazenda é a **última terra viva**. Durante o dia você planta, rega e colhe. À noite, hordas de zumbis atacam, e **as plantas maduras ganham vida para lutar**.
 
 Jogo 3D em primeira pessoa que roda no navegador. Foi feito pensando primeiro no celular e funciona também no PC.
@@ -52,3 +54,14 @@ Andarilho · Corredor · Brutamonte · Cavador (anda por baixo da terra) · Corv
 ## Controles
 - **Celular:** joystick à esquerda · arrastar à direita para olhar · botão grande usa a ferramenta ou ataca · botão verde para interagir · 🌙 para começar a noite
 - **PC:** WASD · mouse · clique · E · 1-7 · C (semente) · N (começar a noite) · B (loja) · M (mercado) · K (habilidades) · V (câmera do trator)
+
+## Família e casa
+- **Ana** cozinha refeições que curam e dão bônus; **Bia e Léo** regam e adubam; **Vô Zé** tem oficina (defesas da casa), forja (armas) e laboratório (fusões).
+- A família é o objetivo: zumbis quebram as tábuas das 6 entradas da casa e, abertas, ferem a família. Pregue tábuas com madeira.
+- Defesas: chapas de metal, armadilha da varanda, holofote e torreta no telhado.
+
+## Recursos e progresso
+- Zumbis deixam cair madeira, metal, sementes mutantes e comida; ganhos ao amanhecer, com nota S/A/B/C.
+- Armas: pá, machado, foice dupla, espingarda de sementes e lança-chamas, com combo de 3 golpes, críticos e esquiva.
+- Fusões: Milho Incendiário, Girassol Prisma e Abóbora Espinhosa.
+- História: abertura, diário do pai, rádio e resgate da Base Esperança após montar a torre de rádio.
