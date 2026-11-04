@@ -20,6 +20,7 @@ import { Horde, ZDEF, eyeMat as zEyeMat, type Zombie, type ZKind } from './zombi
 import { Defense } from './defense';
 import { LaneView, LMAP, lanesFor } from './lanes';
 import { Creatures } from './creatures';
+import { Minimap } from './minimap';
 import { Walls, WALLS } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
@@ -67,6 +68,10 @@ const creatures = new Creatures(scene, fx, high);
 creatures.aim = (t) => (defense.hasAim[t] ? { x: defense.aimX[t], z: defense.aimZ[t] } : null);
 creatures.charge = defense.charge;
 const walls = new Walls(scene, fx);
+const minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement);
+// lanterna (segue a câmera) — ilumina a noite
+const flashlight = new THREE.SpotLight(0xfff4dd, 0, 45, 0.55, 0.55, 1.2);
+scene.add(flashlight, flashlight.target);
 let buildType = 0;
 interface WaveEntry { kind: ZKind; lane: string }
 let plan: { list: WaveEntry[]; mod: string | null; counts: Record<string, number>; kinds: Record<string, number> } = { list: [], mod: null, counts: {}, kinds: {} };
@@ -74,7 +79,13 @@ let nightMod: string | null = null, baseAtDusk = 0;
 defense.ctx = {
   kill: (z, by) => onKill(z, by),
   boom: (x, z) => boom(x, z),
-  shot: (k) => { if (shotT <= 0) { shotT = 0.07; sfx.shoot(k); } },
+  shot: (k) => { if (shotT <= 0) { shotT = 0.07; sfx.shoot(k === 4 ? 1 : k); } },
+  levelUp: (t, lvl) => {
+    const x = tileX(t), z = tileZ(t);
+    fx.spawn(x, 2, z, 0xffd23f, 30, 1.5, 5, 5, 1.2);
+    if (camera.position.distanceToSquared(new THREE.Vector3(x, 0, z)) < 2500) ui.float3d(`⭐ ${CROPS[T.c[t]].def} nível ${lvl + 1}!`, new THREE.Vector3(x, 2.8, z), camera, 'money');
+    sfx.combo();
+  },
 };
 let playerHp = 100, hurtT = 10, deadT = 0, over = false, shotT = 0, baseAlertT = 0, groanT = 3, shake = 0;
 let spawnQueue: WaveEntry[] = [], spawnT = 0, waveTotal = 0, visDay = 0.05;
@@ -530,6 +541,8 @@ function planNext() {
   const mod = plan.mod ? `<div class="pmod">${MODS[plan.mod].name} — ${MODS[plan.mod].desc}</div>` : '';
   ui.setPreview(`<div class="ptitle">📋 Próxima noite ${n}${newLane ? ` · <span class="new">NOVA ROTA: ${newLane.arrow} ${newLane.name}!</span>` : ''}</div><div>${lanes}</div><div class="pk">${kinds}</div>${mod}`);
 }
+
+function laneOf(path: [number, number][]): string | null { for (const id in LMAP) if (LMAP[id].pts === path) return id; return null; }
 
 function spawnOne(e: WaveEntry) {
   const n = s.nights + 1;
@@ -993,7 +1006,28 @@ function frame(now: number) {
   }
   if (shake > 0) { shake -= dt; camera.position.x += (Math.random() - 0.5) * shake * 0.6; camera.position.y += (Math.random() - 0.5) * shake * 0.6; }
   creatures.update(dt, s.phase === 'night' && playing, realTime, camera.position);
+  renderer.toneMappingExposure = 1.05 + world.night * 0.12;
+  {
+    const on = world.night > 0.3 && playing;
+    flashlight.intensity = on ? world.night * (s.inTractor ? 160 : 55) : 0;
+    if (s.inTractor) {
+      flashlight.position.copy(tractor.group.localToWorld(new THREE.Vector3(0, 2.2, -2.6)));
+      flashlight.target.position.copy(tractor.group.localToWorld(new THREE.Vector3(0, 0, -16)));
+      flashlight.angle = 0.75;
+    } else {
+      camera.getWorldDirection(ray);
+      flashlight.position.copy(camera.position).addScaledVector(ray, 0.3);
+      flashlight.position.y -= 0.25;
+      flashlight.target.position.copy(camera.position).addScaledVector(ray, 12);
+      flashlight.angle = 0.55;
+    }
+  }
   laneView.update(dt, realTime);
+  if (playing) {
+    const live: Record<string, number> = {};
+    if (s.phase === 'night') { for (const e of spawnQueue) live[e.lane] = (live[e.lane] || 0) + 1; for (const z of horde.list) if (!z.dead && z.path) { const id = laneOf(z.path); if (id) live[id] = (live[id] || 0) + 1; } }
+    minimap.update(dt, horde, walls, player.pos.x, player.pos.z, s.inTractor ? tractor.yaw : player.yaw, { x: tractor.group.position.x, z: tractor.group.position.z, on: lv('tractor') > 0 }, s.phase === 'night' ? live : plan.counts, realTime);
+  }
   world.update(dt, camera.position, realTime);
   fx.update(dt);
 

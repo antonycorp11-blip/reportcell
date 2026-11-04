@@ -24,8 +24,8 @@ export const parcelLevel = (n: number) => n + 1;
 export function parcelSignPos(id: number) { const p = PARCELS[id]; return new THREE.Vector3(p.x0 + 10, 0, p.z0 + 20.6); }
 
 const C = (h: number) => new THREE.Color(h);
-const DAY_TOP = C(0x5f86a8), DAY_HOR = C(0xe2b98a), NIGHT_TOP = C(0x04080c), NIGHT_HOR = C(0x16301f), GOLD = C(0xff8a4a), RAIN = C(0x7f8a86);
-const SUN_DAY = C(0xffe6c4), SUN_GOLD = C(0xff8a4a), MOON = C(0x8fd0a8);
+const DAY_TOP = C(0x5f86a8), DAY_HOR = C(0xe2b98a), NIGHT_TOP = C(0x0b1838), NIGHT_HOR = C(0x2c4664), GOLD = C(0xff8a4a), RAIN = C(0x7f8a86);
+const SUN_DAY = C(0xffe6c4), SUN_GOLD = C(0xff8a4a), MOON = C(0xc4d8ff);
 const GRASS_DRY = C(0xb9ad62), GRASS_LUSH = C(0x5ea845), HILL = C(0x7a6e4c), ROCK = C(0x7d766a), SAND = C(0xd9c995), ASH = C(0x8c7d5a);
 
 export class World {
@@ -92,14 +92,16 @@ export class World {
 
     // Céu
     this.skyMat = new THREE.ShaderMaterial({
-      uniforms: { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color() }, sunVis: { value: 1 } },
+      uniforms: { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color() }, sunVis: { value: 1 }, moonDir: { value: new THREE.Vector3(0, 1, 0) }, moonVis: { value: 0 } },
       vertexShader: `varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
-      fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunVis; varying vec3 vDir;
+      fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunVis; uniform vec3 moonDir; uniform float moonVis; varying vec3 vDir;
         void main(){ vec3 d = normalize(vDir); float h = d.y;
           vec3 c = mix(hor, top, smoothstep(-0.02, 0.5, h));
           if (h < 0.0) c = hor * mix(1.0, 0.75, min(1.0, -h * 3.0));
           float sd = max(dot(d, sunDir), 0.0);
           c += sunCol * (smoothstep(0.9985, 0.9992, sd) * 2.0 + pow(sd, 10.0) * 0.28) * sunVis;
+          float md = max(dot(d, moonDir), 0.0);
+          c += vec3(0.85, 0.9, 1.0) * (smoothstep(0.9965, 0.9975, md) * 1.6 + pow(md, 40.0) * 0.35 + pow(md, 6.0) * 0.08) * moonVis;
           gl_FragColor = vec4(c, 1.0);
           #include <colorspace_fragment>
         }`,
@@ -423,6 +425,48 @@ export class World {
     }
   }
   private fireMat!: THREE.MeshBasicMaterial;
+  private lampLights: THREE.PointLight[] = [];
+  private torchLights: THREE.PointLight[] = [];
+  private torches: THREE.Vector3[] = [];
+  private flameMat = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.95 });
+  private flames!: THREE.InstancedMesh;
+  private fireflies!: THREE.Points;
+  private fireflyBase!: Float32Array;
+  private torchFx = 0;
+
+  private updateTorches(dt: number, time: number) {
+    const on = this.night > 0.25;
+    this.flames.visible = on;
+    for (const l of this.torchLights) l.intensity = on ? this.night * (20 + Math.sin(time * 13 + l.position.x) * 4) : 0;
+    if (!on) return;
+    const m4 = new THREE.Matrix4();
+    this.torches.forEach((p, i) => {
+      const f = 1 + Math.sin(time * 14 + i * 3) * 0.15;
+      m4.makeScale(f, f * 1.5, f).setPosition(p.x, p.y + 0.1, p.z);
+      this.flames.setMatrixAt(i, m4);
+    });
+    this.flames.instanceMatrix.needsUpdate = true;
+    this.torchFx -= dt;
+    if (this.torchFx <= 0) {
+      this.torchFx = 0.08;
+      const p = this.torches[(Math.random() * this.torches.length) | 0];
+      this.fx.spawn(p.x, p.y + 0.3, p.z, Math.random() < 0.5 ? 0xffc040 : 0xff6a20, 1, 0.15, 1.2, -1.5, 0.6);
+    }
+  }
+
+  private updateFireflies(dt: number, time: number) {
+    const mt = this.fireflies.material as THREE.PointsMaterial;
+    mt.opacity = Math.max(0, this.night - 0.3) * 1.2;
+    this.fireflies.visible = mt.opacity > 0.01;
+    if (!this.fireflies.visible) return;
+    const p = this.fireflies.geometry.attributes.position as THREE.BufferAttribute;
+    const b = this.fireflyBase;
+    for (let i = 0; i < p.count; i++) {
+      p.setXYZ(i, b[i * 3] + Math.sin(time * 0.6 + i) * 1.5, b[i * 3 + 1] + Math.sin(time * 1.3 + i * 2) * 0.4, b[i * 3 + 2] + Math.cos(time * 0.5 + i * 1.3) * 1.5);
+    }
+    p.needsUpdate = true;
+    void dt;
+  }
   private smokes: THREE.Group[] = [];
 
   private buildFence() {
@@ -579,6 +623,37 @@ export class World {
     }
     const m = new THREE.Mesh(merge(P), mat(0xffffff, { vertexColors: true })); m.castShadow = true;
     this.scene.add(m, new THREE.Mesh(merge(bulbs), this.lampMat));
+    for (const [x, z] of [[4, -3], [-4, 12], [-9, -3]]) {
+      const l = new THREE.PointLight(0xffcf8a, 0, 26, 1.4);
+      l.position.set(x - Math.sign(x) * 0.8, 3.5, z);
+      this.scene.add(l); this.lampLights.push(l);
+    }
+    // tochas pela fazenda
+    const tp: THREE.BufferGeometry[] = [];
+    const torchSpots: [number, number][] = [[-12, -6], [12, -6], [-36, -6], [36, -6], [-12, -30], [12, -30], [-12, -54], [12, -54], [-36, -30], [36, -30], [-36, -54], [36, -54], [-12, -78], [12, -78], [-24, 4], [22, 2], [0, 28]];
+    for (const [x, z] of torchSpots) {
+      tp.push(part(cyl(0.07, 0.1, 2.2, 5), 0x5a3a22, [x, 1.1, z]));
+      tp.push(part(cyl(0.18, 0.1, 0.3, 6), 0x3a2a1a, [x, 2.3, z]));
+      this.torches.push(new THREE.Vector3(x, 2.5, z));
+    }
+    const tm = new THREE.Mesh(merge(tp), mat(0xffffff, { vertexColors: true })); tm.castShadow = true;
+    this.scene.add(tm);
+    this.flames = new THREE.InstancedMesh(ico(0.22, 0), this.flameMat, this.torches.length);
+    this.flames.frustumCulled = false;
+    this.scene.add(this.flames);
+    for (const [x, z] of [[0, -6], [-24, -30], [24, -30]]) {
+      const l = new THREE.PointLight(0xff9a4a, 0, 30, 1.3);
+      l.position.set(x, 3, z);
+      this.scene.add(l); this.torchLights.push(l);
+    }
+    // vaga-lumes
+    const n = 160; const fp = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { fp[i * 3] = (Math.random() - 0.5) * 90; fp[i * 3 + 1] = 0.5 + Math.random() * 2.5; fp[i * 3 + 2] = -85 + Math.random() * 120; }
+    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.BufferAttribute(fp, 3));
+    this.fireflyBase = fp.slice();
+    this.fireflies = new THREE.Points(fg, new THREE.PointsMaterial({ color: 0xd8ff7a, size: 0.35, map: dotTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    this.fireflies.frustumCulled = false;
+    this.scene.add(this.fireflies);
   }
 
   private buildClouds() {
@@ -744,20 +819,27 @@ export class World {
     this.skyMat.uniforms.sunVis.value = dayF * (1 - rf * 0.9);
     (this.scene.fog as THREE.Fog).color.copy(hor);
     this.fogK += (this.fogMult - this.fogK) * Math.min(1, dt * 0.5);
-    (this.scene.fog as THREE.Fog).far = (430 - rf * 200) * (1 - this.night * 0.6) * this.fogK;
-    (this.scene.fog as THREE.Fog).near = 90 * (1 - this.night * 0.6);
+    (this.scene.fog as THREE.Fog).far = (430 - rf * 200) * (1 - this.night * 0.35) * this.fogK;
+    (this.scene.fog as THREE.Fog).near = 90 * (1 - this.night * 0.4);
 
-    const lightDir = el > -0.05 ? this.sunDir : new THREE.Vector3(-this.sunDir.x, -this.sunDir.y, this.sunDir.z).normalize();
+    const moonDir = new THREE.Vector3(-this.sunDir.x * 0.6, Math.max(0.55, -this.sunDir.y), this.sunDir.z - 0.3).normalize();
+    this.skyMat.uniforms.moonDir.value.copy(moonDir);
+    this.skyMat.uniforms.moonVis.value = this.night * (1 - rf * 0.8);
+    const lightDir = el > -0.05 ? this.sunDir : moonDir;
     this.sun.position.copy(camPos).addScaledVector(lightDir, 100);
     this.sun.target.position.copy(camPos);
     this.sun.color.copy(MOON).lerp(new THREE.Color().copy(SUN_DAY).lerp(SUN_GOLD, goldF), dayF);
-    this.sun.intensity = (2.7 * dayF + 0.45 * (1 - dayF)) * (1 - rf * 0.5);
-    this.hemi.intensity = (0.5 + 1.05 * dayF) * (1 - rf * 0.15);
-    this.hemi.color.copy(top).lerp(new THREE.Color(0xffffff), 0.5);
+    this.sun.intensity = (2.7 * dayF + 0.95 * (1 - dayF)) * (1 - rf * 0.5);
+    this.hemi.intensity = (0.72 + 0.83 * dayF) * (1 - rf * 0.15);
+    this.hemi.color.copy(top).lerp(new THREE.Color(0xffffff), 0.5 + 0.15 * this.night);
+    this.hemi.groundColor.set(this.night > 0.5 ? 0x2f3f4f : 0x5d7040);
     this.windowMat.emissiveIntensity = this.night * 1.3;
     this.fireMat.opacity = 0.25 + this.night * 0.6 + Math.sin(time * 7) * 0.08;
     for (const g of this.smokes) g.rotation.y += dt * 0.03;
     this.lampMat.emissiveIntensity = this.night * 2;
+    for (const l of this.lampLights) l.intensity = this.night * 28;
+    this.updateTorches(dt, time);
+    this.updateFireflies(dt, time);
     this.porch.intensity = this.night * 30;
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, this.night - 0.3) * (1 - rf);
     this.sky.position.copy(camPos);

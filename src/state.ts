@@ -3,7 +3,7 @@ export interface Stats {
   sold: number; maxCombo: number; flour: number; oil: number; corn: number;
   kills: number; runOver: number;
 }
-export interface TileSave { s: number[]; c: number[]; g: number[]; w: number[]; f: number[]; l: number[] }
+export interface TileSave { s: number[]; c: number[]; g: number[]; w: number[]; f: number[]; l: number[]; k?: number[] }
 export interface Order { item: string; qty: number; bonus: number; time: number }
 export interface Settings { sound: boolean; quality: 'auto' | 'low' | 'high' }
 

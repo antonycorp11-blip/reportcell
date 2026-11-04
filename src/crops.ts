@@ -100,8 +100,31 @@ function lavender(): G {
   return merge(P);
 }
 
+function cactus(): G {
+  const r = rng(88); const P: G[] = [];
+  for (const [x, z] of [[-0.45, -0.4], [0.45, -0.3], [-0.2, 0.45], [0.5, 0.5]]) {
+    const h = 0.7 + r() * 0.5;
+    P.push(part(cyl(0.13, 0.15, h, 7), 0x4f9a4a, [x, h / 2, z]));
+    P.push(part(ico(0.13, 0), 0x4f9a4a, [x, h, z]));
+    P.push(part(cyl(0.07, 0.07, 0.3, 6), 0x5aa652, [x + 0.16, h * 0.55, z], [0, 0, -1.2]));
+    P.push(part(cyl(0.07, 0.07, 0.25, 6), 0x5aa652, [x + 0.26, h * 0.55 + 0.15, z]));
+    if (r() > 0.5) P.push(part(ico(0.07, 0), 0xff7ab0, [x, h + 0.12, z]));
+  }
+  return merge(P);
+}
+
+function pepper(): G {
+  const r = rng(99); const P: G[] = [];
+  for (const [x, z] of [[-0.4, -0.35], [0.4, -0.3], [0, 0.42]]) {
+    P.push(part(cyl(0.03, 0.04, 0.45, 4), 0x4f7a2a, [x, 0.22, z]));
+    P.push(part(ico(0.3, 0), 0x3f7a2a, [x, 0.5, z], [r(), r(), 0], [1, 0.8, 1]));
+    for (let k = 0; k < 4; k++) { const a = r() * Math.PI * 2; P.push(part(cone(0.06, 0.28, 5), k % 2 ? 0xe02a1a : 0xff4a1a, [x + Math.cos(a) * 0.26, 0.38, z + Math.sin(a) * 0.26], [Math.PI + 0.3, a, 0])); }
+  }
+  return merge(P);
+}
+
 export function buildCropGeometries(): G[] {
-  return [shade(wheat(), 0.5), shade(corn(), 0.45), shade(sunflower(), 0.5), shade(pumpkin(), 0.6), shade(strawberry(), 0.6), shade(lavender(), 0.5)];
+  return [shade(wheat(), 0.5), shade(corn(), 0.45), shade(sunflower(), 0.5), shade(pumpkin(), 0.6), shade(strawberry(), 0.6), shade(lavender(), 0.5), shade(cactus(), 0.6), shade(pepper(), 0.55)];
 }
 
 export function grassTuft(): G {

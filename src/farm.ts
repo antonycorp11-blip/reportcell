@@ -21,8 +21,10 @@ export const T = {
   h: new Float32Array(N),        // vida da planta
   p: new Float32Array(N),        // pulso de ataque (visual)
   a: new Float32Array(N),        // 0 = planta, 1 = criatura viva
+  k: new Uint16Array(N),         // zumbis eliminados pela planta
 };
-export const CROP_HP = [40, 70, 55, 300, 60, 90];
+export const CROP_HP = [40, 70, 55, 300, 60, 90, 480, 80];
+export const plantLevel = (t: number) => (T.k[t] >= 40 ? 3 : T.k[t] >= 15 ? 2 : T.k[t] >= 5 ? 1 : 0);
 export const tileMaxHp = (t: number) => CROP_HP[T.c[t]] * (0.3 + 0.7 * T.g[t]);
 
 /** Zumbi comendo a planta. Retorna true se destruiu. */
@@ -31,7 +33,7 @@ export function damageTile(t: number, d: number): boolean {
   T.h[t] -= d;
   T.p[t] = Math.max(T.p[t], -0.6);
   dirty = true;
-  if (T.h[t] <= 0) { T.s[t] = 3; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0; return true; }
+  if (T.h[t] <= 0) { T.s[t] = 3; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0; T.k[t] = 0; return true; }
   return false;
 }
 export const owned = new Uint8Array(PCOUNT);
@@ -67,12 +69,13 @@ export function resetTiles() {
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 export function serialize(): TileSave {
-  return { s: Array.from(T.s), c: Array.from(T.c), g: Array.from(T.g, r3), w: Array.from(T.w, r3), f: Array.from(T.f, r3), l: Array.from(T.l) };
+  return { s: Array.from(T.s), c: Array.from(T.c), g: Array.from(T.g, r3), w: Array.from(T.w, r3), f: Array.from(T.f, r3), l: Array.from(T.l), k: Array.from(T.k) };
 }
 export function deserialize(d: TileSave | null) {
   resetTiles();
   if (!d || !d.s || d.s.length !== N) return;
   T.s.set(d.s); T.c.set(d.c); T.g.set(d.g); T.w.set(d.w); T.f.set(d.f); T.l.set(d.l);
+  T.k.fill(0); if (d.k && d.k.length === N) T.k.set(d.k);
   for (let t = 0; t < N; t++) if (T.s[t] === 2) T.h[t] = tileMaxHp(t);
   dirty = true;
 }
@@ -107,7 +110,7 @@ export function plant(t: number, c: number): 'ok' | 'money' | null {
   const C = CROPS[c];
   if (game.s.money < C.seed) return 'money';
   game.s.money -= C.seed;
-  T.s[t] = 2; T.c[t] = c; T.g[t] = 0; T.h[t] = CROP_HP[c] * 0.3;
+  T.s[t] = 2; T.c[t] = c; T.g[t] = 0; T.h[t] = CROP_HP[c] * 0.3; T.k[t] = 0;
   game.s.stats.planted++;
   if (C.id === 'corn') game.s.stats.corn++;
   dirty = true;
@@ -146,7 +149,7 @@ export function harvest(t: number, xpMult = 1): HarvestRes {
   const m4 = sk('a4') > 0;
   if (last === c) T.f[t] = Math.max(0.6, T.f[t] - (m4 ? 0.04 : 0.08));
   else if (rot) T.f[t] = Math.min(m4 ? 1.8 : 1.6, T.f[t] + (m4 ? 0.2 : 0.1));
-  T.l[t] = c; T.s[t] = 3; T.g[t] = 0; T.c[t] = -1; T.w[t] *= 0.6;
+  T.l[t] = c; T.s[t] = 3; T.g[t] = 0; T.c[t] = -1; T.w[t] *= 0.6; T.k[t] = 0;
   game.s.stats.harvested++;
   addXp(Math.max(1, Math.round(C.xp * xpMult)));
   dirty = true;

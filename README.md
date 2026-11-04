@@ -23,6 +23,7 @@ npm run build    # gera dist/ (publicado na Cloudflare via wrangler.jsonc)
 
 ## Plantas-defensoras
 Ao anoitecer, as culturas maduras **se transformam em criaturas** (e voltam a ser plantas ao amanhecer).
+Cada criatura **sobe de nível** ao eliminar zumbis (⭐ com 5, ⭐⭐ com 15, ⭐⭐⭐ com 40): fica maior e causa até +90% de dano.
 
 | Cultura | Defensora | Papel |
 |---|---|---|
@@ -32,6 +33,11 @@ Ao anoitecer, as culturas maduras **se transformam em criaturas** (e voltam a se
 | 🎃 Abóbora | Abóbora-Bomba | muro resistente que explode |
 | 🍓 Morango | Morango-Ácido | ácido em área que envenena |
 | 💜 Lavanda | Lavanda-Sonífera | aura que deixa lento e fere |
+| 🌵 Cacto | Cacto-Muralha | muralha resistente; espinhos ferem quem morde |
+| 🌶️ Pimenta | Pimenta-Dragão | cospe fogo de perto e queima em área |
+
+## Noite iluminada e minimapa
+Lua e luar, lanterna que acompanha a visão (farol no trator), tochas com fogo pela fazenda, postes acesos e vaga-lumes. O **minimapa** mostra as rotas com a contagem de zumbis, os zumbis em tempo real, as barricadas, o trator e você; toque nele para ampliar.
 
 ## Zumbis
 Andarilho · Corredor · Brutamonte · Cavador (anda por baixo da terra) · Corvo-zumbi (voa) · **Colosso** (chefe a cada 5 noites)

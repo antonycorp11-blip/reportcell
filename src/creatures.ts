@@ -116,6 +116,48 @@ function lavBody(): G {
 }
 function lavGlow(): G { return merge([part(ico(0.13, 1), 0xe8d0ff, [0, 0.62, 0])]); }
 
+// --------------------------------------------------------------- 🌵 Cacto-Muralha
+function cactusBody(): G {
+  const P: G[] = [];
+  P.push(part(cyl(0.42, 0.48, 1.7, 9), 0x4f9a4a, [0, 0.85, 0]));
+  P.push(part(ico(0.43, 1), 0x4f9a4a, [0, 1.7, 0], [0, 0, 0], [1, 0.7, 1]));
+  for (let i = 0; i < 9; i++) P.push(part(box(0.05, 1.7, 0.06), 0x3a7a38, [Math.cos((i / 9) * 6.28) * 0.44, 0.9, Math.sin((i / 9) * 6.28) * 0.44], [0, -(i / 9) * 6.28, 0]));
+  for (const sx of [-1, 1]) {
+    P.push(part(cyl(0.17, 0.17, 0.5, 7), 0x5aa652, [sx * 0.62, 1.0, 0], [0, 0, sx * 1.57]));
+    P.push(part(cyl(0.17, 0.17, 0.7, 7), 0x5aa652, [sx * 0.84, 1.35, 0]));
+    P.push(part(ico(0.17, 0), 0x5aa652, [sx * 0.84, 1.7, 0]));
+  }
+  for (let i = 0; i < 36; i++) { const a = Math.random() * 6.28, y = 0.2 + Math.random() * 1.6; P.push(part(cone(0.025, 0.18, 3), 0xf2ead2, [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], [0, -a, Math.PI / 2])); }
+  P.push(part(ico(0.13, 0), 0xff6aa8, [0.1, 2.0, 0]));
+  P.push(part(ico(0.09, 0), 0xffe35a, [0.1, 2.05, -0.05]));
+  eyes(P, 1.45, -0.45, 0.15, 0.09);
+  P.push(part(box(0.3, 0.06, 0.05), 0x1a3a1a, [0, 1.18, -0.47]));
+  return shade(merge(P), 0.6);
+}
+
+// --------------------------------------------------------------- 🌶️ Pimenta-Dragão
+function pepperBody(): G {
+  const P: G[] = [];
+  P.push(part(ico(0.36, 1), 0xc8140e, [0, 1.0, 0.05], [0.2, 0, 0], [1, 1.45, 0.95]));
+  P.push(part(cone(0.24, 0.55, 8), 0xb3120c, [0, 0.42, 0.28], [Math.PI + 0.75, 0, 0]));
+  P.push(part(cone(0.1, 0.3, 6), 0xa0100a, [0, 0.2, 0.55], [Math.PI + 1.4, 0, 0]));
+  P.push(part(ico(0.32, 1), 0xe0261a, [0, 1.5, -0.12]));
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; P.push(part(cone(0.12, 0.32, 3), 0x3f8a2a, [Math.cos(a) * 0.2, 1.8, Math.sin(a) * 0.2 - 0.1], [Math.sin(a) * 1.0, 0, -Math.cos(a) * 1.0], [1, 1, 0.3])); }
+  P.push(part(cyl(0.05, 0.07, 0.35, 5), 0x3f8a2a, [0, 1.95, -0.1], [0.4, 0, 0]));
+  // boca de dragão
+  P.push(part(cyl(0.12, 0.15, 0.2, 8), 0x5a0a0a, [0, 1.38, -0.42], [Math.PI / 2, 0, 0]));
+  eyes(P, 1.62, -0.38, 0.13, 0.075);
+  for (const sx of [-1, 1]) {
+    P.push(part(cone(0.18, 0.5, 3), 0x3f8a2a, [sx * 0.35, 1.0, 0.1], [0, 0, sx * 1.4], [1, 1, 0.25]));
+    P.push(part(cyl(0.05, 0.03, 0.45, 4), 0x3f7a2a, [sx * 0.12, 0.15, 0], [0, 0, sx * 0.4]));
+  }
+  return shade(merge(P), 0.6);
+}
+function pepperGlow(): G { return merge([part(cyl(0.08, 0.1, 0.05, 8), 0xffa02a, [0, 1.38, -0.53], [Math.PI / 2, 0, 0])]); }
+
+const STAR = merge([part(new THREE.OctahedronGeometry(0.13, 0), 0xffd23f, [0, 0, 0], [0, 0, 0], [1, 1, 0.35])]);
+const HEAD = [1.75, 2.35, 2.35, 1.35, 1.55, 1.55, 2.3, 2.15];
+
 /** Plantas-criaturas: as culturas maduras se transformam à noite. */
 export class Creatures {
   private body: THREE.InstancedMesh[] = [];
@@ -132,11 +174,12 @@ export class Creatures {
   /** alvo de cada canteiro (definido pela defesa) */
   aim: (t: number) => { x: number; z: number } | null = () => null;
   charge = new Float32Array(N);
+  private stars: THREE.InstancedMesh;
 
   constructor(scene: THREE.Scene, private fx: FX, high: boolean) {
-    const bodies = [wheatBody(), cornBody(), sunBody(), pumpBody(), berryBody(), lavBody()];
-    const glows = [null, null, sunGlow(), pumpGlow(), null, lavGlow()];
-    const bm = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const bodies = [wheatBody(), cornBody(), sunBody(), pumpBody(), berryBody(), lavBody(), cactusBody(), pepperBody()];
+    const glows = [null, null, sunGlow(), pumpGlow(), null, lavGlow(), null, pepperGlow()];
+    const bm = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x2a3a24, emissiveIntensity: 0.35 });
     const gm = new THREE.MeshBasicMaterial({ vertexColors: true });
     bodies.forEach((g, i) => {
       const m = new THREE.InstancedMesh(g, bm, N); m.count = 0; m.frustumCulled = false; m.castShadow = high; m.receiveShadow = true;
@@ -145,13 +188,17 @@ export class Creatures {
       if (gg) { const mg = new THREE.InstancedMesh(gg, gm, N); mg.count = 0; mg.frustumCulled = false; scene.add(mg); this.glow.push(mg); }
       else this.glow.push(null);
     });
+    this.stars = new THREE.InstancedMesh(STAR, new THREE.MeshBasicMaterial({ vertexColors: true }), N * 3);
+    this.stars.count = 0; this.stars.frustumCulled = false;
+    scene.add(this.stars);
     const r = rng(9);
     for (let t = 0; t < N; t++) { this.delay[t] = r() * 2.5; this.yaw[t] = 0; }
   }
 
   update(dt: number, night: boolean, time: number, cam: THREE.Vector3) {
     this.nightT = night ? this.nightT + dt : 0;
-    const counts = [0, 0, 0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0, 0, 0, 0];
+    let ns = 0;
     let changed = false;
     for (let t = 0; t < N; t++) {
       const ripe = T.s[t] === 2 && T.g[t] >= 1 && owned[(t / 100) | 0];
@@ -182,12 +229,15 @@ export class Creatures {
       // escala com "pulo" ao nascer
       const k = a < 1 ? 1 + 2.7 * Math.pow(a - 1, 3) + 1.7 * Math.pow(a - 1, 2) : 1;
       const breathe = 1 + Math.sin(time * 3.2 + t * 1.7) * 0.04;
-      let sx = k, sy = k * breathe, lean = 0, lift = 0;
+      const lvl = T.k[t] >= 40 ? 3 : T.k[t] >= 15 ? 2 : T.k[t] >= 5 ? 1 : 0;
+      const big = 1 + lvl * 0.1;
+      let sx = k * big, sy = k * breathe * big, lean = 0, lift = 0;
       if (c === 1) lean = pu * 0.45;                       // coice do milho
       if (c === 2) lean = -0.12 - pu * 0.2;                // girassol inclina para o alvo
       if (c === 3) { const ch = this.charge[t]; const w = 1 + ch * 0.25 + Math.sin(time * (8 + ch * 30)) * ch * 0.08; sx *= w; sy *= w; }
       if (c === 4) lean = -pu * 0.6;                       // catapulta
       if (c === 5) { lift = 0.25 + Math.sin(time * 2 + t) * 0.15; this.yaw[t] += dt * 0.6; }
+      if (c === 7) lean = -pu * 0.25;
       if (pu > 0 && c !== 0) { sx *= 1 + pu * 0.12; sy *= 1 - pu * 0.06; }
       if (T.p[t] < 0) { sx *= 1 + T.p[t] * 0.2; sy *= 1 + T.p[t] * 0.3; } // sendo mordida
       this.e.set(lean, this.yaw[t], 0, 'YXZ');
@@ -196,7 +246,16 @@ export class Creatures {
       this.body[c].setMatrixAt(counts[c], this.m4);
       this.glow[c]?.setMatrixAt(counts[c], this.m4);
       counts[c]++;
+      if (lvl > 0 && a > 0.9) {
+        for (let si = 0; si < lvl; si++) {
+          const ang = time * 2 + si * (6.283 / lvl);
+          this.q.setFromEuler(this.e.set(0, time * 3, 0));
+          this.m4.compose(this.p.set(x + Math.cos(ang) * 0.3, (HEAD[c] + lift) * big + 0.15, z + Math.sin(ang) * 0.3), this.q, this.sc.set(1, 1, 1));
+          this.stars.setMatrixAt(ns++, this.m4);
+        }
+      }
     }
+    this.stars.count = ns; this.stars.instanceMatrix.needsUpdate = true;
     this.body.forEach((m, i) => {
       m.count = counts[i]; m.instanceMatrix.needsUpdate = true;
       const g = this.glow[i]; if (g) { g.count = counts[i]; g.instanceMatrix.needsUpdate = true; }

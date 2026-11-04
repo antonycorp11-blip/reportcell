@@ -14,12 +14,14 @@ export const DEF = [
   { kind: 'bomb', range: 2.4, dmg: 170, cd: 0, eyeY: 0.45 },
   { kind: 'lob', range: 13, dmg: 20, cd: 1.7, eyeY: 0.5 },
   { kind: 'aura', range: 6, dmg: 5, cd: 0, eyeY: 0.85 },
+  { kind: 'wall', range: 0, dmg: 14, cd: 0, eyeY: 1.4 },
+  { kind: 'flame', range: 6.5, dmg: 34, cd: 0.15, eyeY: 1.6 },
 ] as const;
 
-interface Proj { kind: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; dmg: number; target: Zombie | null; player: boolean }
+interface Proj { kind: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; dmg: number; target: Zombie | null; player: boolean; src: number }
 interface Beam { line: THREE.Line; life: number }
 
-export interface DefCtx { kill: (z: Zombie, by: 'plant' | 'player') => void; boom: (x: number, z: number) => void; shot: (k: number) => void }
+export interface DefCtx { kill: (z: Zombie, by: 'plant' | 'player') => void; boom: (x: number, z: number) => void; shot: (k: number) => void; levelUp: (t: number, lvl: number) => void }
 
 export class Defense {
   private cd = new Float32Array(N);
@@ -56,7 +58,16 @@ export class Defense {
     }
   }
 
-  dmgMult(t: number) { return (1 + 0.15 * lv('rage')) * Math.max(0.7, T.f[t]); }
+  dmgMult(t: number) { return (1 + 0.15 * lv('rage')) * Math.max(0.7, T.f[t]) * (1 + 0.3 * farm.plantLevel(t)); }
+
+  private killBy(z: Zombie, t: number) {
+    this.ctx.kill(z, 'plant');
+    if (t < 0 || T.s[t] !== 2) return;
+    const before = farm.plantLevel(t);
+    T.k[t]++;
+    const after = farm.plantLevel(t);
+    if (after > before) this.ctx.levelUp(t, after);
+  }
 
   fireSeed(from: THREE.Vector3, target: Zombie | null, dir: THREE.Vector3, dmg: number) {
     const sp = 34;
@@ -67,7 +78,7 @@ export class Defense {
       this.v.set(tp.x - from.x, ty - from.y, tp.z - from.z).normalize().multiplyScalar(sp);
       vx = this.v.x; vy = this.v.y; vz = this.v.z;
     }
-    this.projs.push({ kind: 2, x: from.x, y: from.y, z: from.z, vx, vy, vz, life: 1.2, dmg, target, player: true });
+    this.projs.push({ kind: 2, x: from.x, y: from.y, z: from.z, vx, vy, vz, life: 1.2, dmg, target, player: true, src: -1 });
   }
 
   update(dt: number, night: boolean, camPos: THREE.Vector3) {
@@ -93,7 +104,7 @@ export class Defense {
         case 'blade': {
           if (this.cd[t] > 0) break;
           let hit = false;
-          H.each(x, z, d.range, (zb) => { if (zb.kind === 'crow') return; hit = true; if (H.hit(zb, d.dmg * m, { slow: 0.5, slowT: 1 })) this.ctx.kill(zb, 'plant'); });
+          H.each(x, z, d.range, (zb) => { if (zb.kind === 'crow') return; hit = true; if (H.hit(zb, d.dmg * m, { slow: 0.5, slowT: 1 })) this.killBy(zb, t); });
           if (hit) { this.cd[t] = d.cd; T.p[t] = 1; this.fx.spawn(x, 0.8, z, 0xf4e08a, 3, 1.2, 1.5, 6, 0.3); }
           break;
         }
@@ -106,11 +117,11 @@ export class Defense {
           if (d.kind === 'shoot') {
             const ty = look.kind === 'crow' ? 3.4 : 1.2;
             this.v.set(lp.x - x, ty - 1.8, lp.z - z).normalize().multiplyScalar(24);
-            this.projs.push({ kind: 0, x, y: 1.8, z, vx: this.v.x, vy: this.v.y, vz: this.v.z, life: 1, dmg: d.dmg * m, target: look, player: false });
+            this.projs.push({ kind: 0, x, y: 1.8, z, vx: this.v.x, vy: this.v.y, vz: this.v.z, life: 1, dmg: d.dmg * m, target: look, player: false, src: t });
             this.ctx.shot(0);
           } else {
             const tt = 0.85;
-            this.projs.push({ kind: 1, x, y: 0.6, z, vx: (lp.x - x) / tt, vy: 4.5 + 9.8 * tt / 2 - 4.5, vz: (lp.z - z) / tt, life: tt, dmg: d.dmg * m, target: null, player: false });
+            this.projs.push({ kind: 1, x, y: 0.6, z, vx: (lp.x - x) / tt, vy: 4.5 + 9.8 * tt / 2 - 4.5, vz: (lp.z - z) / tt, life: tt, dmg: d.dmg * m, target: null, player: false, src: t });
             this.ctx.shot(1);
           }
           break;
@@ -122,7 +133,7 @@ export class Defense {
           this.cd[t] = d.cd; T.p[t] = 1;
           const ty = look.kind === 'crow' ? 3.4 : 1.3 * (look.kind === 'colossus' ? 2 : 1);
           this.beam(x, 1.75, z, lp.x, ty, lp.z);
-          if (H.hit(look, d.dmg * m)) this.ctx.kill(look, 'plant');
+          if (H.hit(look, d.dmg * m)) this.killBy(look, t);
           this.ctx.shot(2);
           break;
         }
@@ -133,7 +144,7 @@ export class Defense {
           const close = (zb.g.position.x - x) ** 2 + (zb.g.position.z - z) ** 2 < 2.2;
           if (this.charge[t] < 1 && !close) break;
           this.charge[t] = 0;
-          H.each(x, z, 4.5, (o) => { if (H.hit(o, d.dmg * m, { ignoreBurrow: true, knock: this.v.set(o.g.position.x - x, 0, o.g.position.z - z).normalize().multiplyScalar(8) })) this.ctx.kill(o, 'plant'); }, true);
+          H.each(x, z, 4.5, (o) => { if (H.hit(o, d.dmg * m, { ignoreBurrow: true, knock: this.v.set(o.g.position.x - x, 0, o.g.position.z - z).normalize().multiplyScalar(8) })) this.killBy(o, -1); }, true);
           this.ctx.boom(x, z);
           T.s[t] = 3; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0;
           farm.markDirty();
@@ -142,8 +153,19 @@ export class Defense {
         case 'aura': {
           if (!doAura) break;
           let hit = false;
-          H.each(x, z, d.range, (zb) => { hit = true; if (H.hit(zb, d.dmg * m * 0.25, { slow: 0.45, slowT: 0.6, ignoreBurrow: true })) this.ctx.kill(zb, 'plant'); }, true);
+          H.each(x, z, d.range, (zb) => { hit = true; if (H.hit(zb, d.dmg * m * 0.25, { slow: 0.45, slowT: 0.6, ignoreBurrow: true })) this.killBy(zb, t); }, true);
           if (hit) { T.p[t] = 0.6; const a = Math.random() * 6.28; this.fx.spawn(x + Math.cos(a) * 2, 0.8, z + Math.sin(a) * 2, 0xc9a8ff, 2, 1, 0.8, -0.3, 1); }
+          break;
+        }
+        case 'flame': {
+          if (this.cd[t] > 0 || !look || look.kind === 'crow') break;
+          const lp = look.g.position;
+          const dd = Math.hypot(lp.x - x, lp.z - z);
+          if (dd > d.range) break;
+          this.cd[t] = d.cd; T.p[t] = 0.7;
+          H.each(lp.x, lp.z, 1.8, (zb) => { if (zb.kind !== 'crow' && H.hit(zb, d.dmg * m * d.cd, { poison: 6 })) this.killBy(zb, t); });
+          for (let k = 1; k <= 3; k++) { const f = k / 3; this.fx.spawn(x + (lp.x - x) * f, 1.3 - f * 0.4, z + (lp.z - z) * f, k === 3 ? 0xff4a1a : 0xffb02a, 2, 0.6, 1, -1, 0.35); }
+          if (Math.random() < 0.3) this.ctx.shot(4);
           break;
         }
       }
@@ -158,7 +180,7 @@ export class Defense {
     }
   }
 
-  ctx: DefCtx = { kill: () => { /* */ }, boom: () => { /* */ }, shot: () => { /* */ } };
+  ctx: DefCtx = { kill: () => { /* */ }, boom: () => { /* */ }, shot: () => { /* */ }, levelUp: () => { /* */ } };
 
   private beam(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) {
     const b = this.beams.find((x) => x.life <= 0);
@@ -181,7 +203,7 @@ export class Defense {
       let done = false;
       if (p.kind === 1) {
         if (p.life <= 0 || p.y <= 0.1) {
-          H.each(p.x, p.z, 2.4, (zb) => { if (H.hit(zb, p.dmg, { poison: 7 })) this.ctx.kill(zb, 'plant'); });
+          H.each(p.x, p.z, 2.4, (zb) => { if (H.hit(zb, p.dmg, { poison: 7 })) this.killBy(zb, p.src); });
           this.fx.spawn(p.x, 0.3, p.z, 0xff3b5c, 14, 1.8, 2.5, 8, 0.7);
           done = true;
         }
@@ -195,7 +217,7 @@ export class Defense {
           const dx = zp.x - p.x, dz = zp.z - p.z, dy = zy - p.y;
           if (dx * dx + dz * dz < 0.5 * sc * sc && Math.abs(dy) < 1.1 * sc) {
             this.v.set(p.vx, 0, p.vz).normalize().multiplyScalar(p.player ? 3 : 1.5);
-            if (H.hit(zb, p.dmg, { knock: this.v })) this.ctx.kill(zb, p.player ? 'player' : 'plant');
+            if (H.hit(zb, p.dmg, { knock: this.v })) { if (p.player) this.ctx.kill(zb, 'player'); else this.killBy(zb, p.src); }
             done = true; break;
           }
         }

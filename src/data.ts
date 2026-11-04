@@ -13,6 +13,8 @@ export const CROPS: CropDef[] = [
   { id: 'pumpkin', name: 'Abóbora', icon: '🎃', seed: 25, price: 70, time: 60, xp: 12, level: 5, def: 'Abóbora-Bomba', role: 'Muro resistente que explode' },
   { id: 'strawberry', name: 'Morango', icon: '🍓', seed: 40, price: 105, time: 70, xp: 18, level: 7, def: 'Morango-Ácido', role: 'Arremessa ácido que envenena em área' },
   { id: 'lavender', name: 'Lavanda', icon: '💜', seed: 70, price: 180, time: 80, xp: 28, level: 9, def: 'Lavanda-Sonífera', role: 'Aura que deixa zumbis lentos e fere' },
+  { id: 'cactus', name: 'Cacto', icon: '🌵', seed: 10, price: 24, time: 45, xp: 5, level: 3, def: 'Cacto-Muralha', role: 'Muralha resistente: espinhos ferem quem morde' },
+  { id: 'pepper', name: 'Pimenta', icon: '🌶️', seed: 30, price: 85, time: 65, xp: 14, level: 6, def: 'Pimenta-Dragão', role: 'Cospe fogo de perto e queima em área' },
 ];
 
 export interface ProductDef {

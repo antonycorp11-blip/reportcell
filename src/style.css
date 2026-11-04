@@ -260,3 +260,10 @@ body.touch #wavePreview { left: 50%; transform: translateX(-50%); bottom: auto; 
 .crop.wide { width: auto; min-width: 3.4em; padding: 0 0.5em; }
 @media (max-height: 400px) { body.touch #wavePreview { top: calc(96px + var(--st)); } }
 @media (orientation: portrait) { body.touch #wavePreview { top: calc(166px + var(--st)); max-width: 92vw; } }
+
+/* ---------------- Minimapa ---------------- */
+#minimap { position: absolute; right: calc(8px + var(--sr)); top: calc(66px + var(--st)); width: 132px; height: 110px; border-radius: 12px; pointer-events: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.35); transition: width 0.2s, height 0.2s; }
+#minimap.big { width: min(360px, 60vw); height: min(300px, 50vh); }
+#combo { top: 52%; }
+@media (max-height: 520px) { #minimap { width: 112px; height: 94px; top: calc(58px + var(--st)); } }
+@media (orientation: portrait) { #minimap { top: calc(64px + var(--st)); width: 104px; height: 88px; } }
