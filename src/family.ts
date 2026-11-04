@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { tp, tmerge, hull, sph, cap, cyl, cone, tor, faceCap, faceTex, eye, brow, mouth, blush, TOON, OUTLINE } from './toon';
 import { resolve } from './physics';
 import * as farm from './farm';
-import { T, N, owned, tileX, tileZ } from './farm';
+import { T, N, owned, live, tileY, tileX, tileZ } from './farm';
 import type { FX } from './fx';
 
 type G = THREE.BufferGeometry;
@@ -139,7 +139,7 @@ export class Family {
       // procura canteiro com sede
       let best = -1, bd = Infinity;
       for (let t = 0; t < N; t++) {
-        if (!owned[(t / 100) | 0] || T.s[t] !== 2 || T.w[t] > 0.45) continue;
+        if (!live(t) || T.s[t] !== 2 || T.w[t] > 0.45) continue;
         const d = (tileX(t) - n.g.position.x) ** 2 + (tileZ(t) - n.g.position.z) ** 2 + (t % 7);
         if (d < bd && !this.list.some((o) => o !== n && o.task === t)) { bd = d; best = t; }
       }

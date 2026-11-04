@@ -28,7 +28,7 @@ import { House, plankHp, maxPlanks } from './house';
 import { Family, FAMILY, type Who } from './family';
 import { icon, RES } from './icons';
 import { introHtml, INTRO, diaryFor, RADIO } from './story';
-import { Walls, WALLS } from './walls';
+import { Walls, WALLS, cantBuild } from './walls';
 import { rng } from './gfx';
 import { colliders } from './physics';
 import { baseMax, playerMax, addXp, dayLen, diffK, pct } from './state';
@@ -366,6 +366,8 @@ function aerialTap(sx: number, sy: number) {
   if (blocked || Math.abs(x) > 92 || z < -95 || z > 60) { ui.toast('🚫 Não dá para construir aqui', 'warn'); sfx.error(); return; }
   const W = WALLS[buildType];
   if (s.level < W.level) { ui.toast(`🔒 ${W.name} requer nível ${W.level}`, 'warn'); return; }
+  const why = cantBuild(buildType, x, z, walls);
+  if (why) { ui.toast(`🚫 ${why}`, 'warn'); sfx.error(); return; }
   if (!payRes(W.cost)) return;
   // vira de frente para a rota mais próxima
   let best = Infinity, rot = 0;
@@ -665,6 +667,7 @@ function planNext() {
   void KIND_ICON;
   const newLane = lanesFor(n).find((l) => l.unlock === n && n > 1);
   const mod = plan.mod ? ` · <span class="pmod">${MODS[plan.mod].name}</span>` : '';
+  if (newLane) setTimeout(() => ui.toast(`🧭 Nova rota ${newLane.arrow} esta noite! Construa 🪴 <b>Vasos</b> no caminho dela e plante defensores.`, 'warn'), 2500);
   const fresh = (Object.keys(ZUNLOCK) as ZKind[]).filter((k) => ZUNLOCK[k] === n && n > 1);
   if (fresh.length) setTimeout(() => showFresh(n, 'chega na próxima noite — prepare-se!'), 1500);
   const freshTxt = fresh.length ? ` <span class="pnew">novo: ${fresh.map((k) => ZDEF[k].name).join(', ')}</span>` : '';
@@ -1017,8 +1020,11 @@ function build() {
   const W = WALLS[buildType];
   if (s.level < W.level) { ui.toast(`🔒 ${W.name} requer nível ${W.level}`, 'warn'); return; }
   if (!buildOk) { ui.toast('🚫 Não dá para construir aqui', 'warn'); sfx.error(); return; }
+  const why = cantBuild(buildType, buildPt.x, buildPt.z, walls);
+  if (why) { ui.toast(`🚫 ${why}`, 'warn'); sfx.error(); return; }
   if (!payRes(W.cost)) return;
   walls.add(buildType, buildPt.x, buildPt.z, buildRot);
+  if (buildType === 3) ui.toast('🪴 Vaso pronto! Use as <b>Sementes</b> nele para plantar um defensor.', 'good');
   player.use(); sfx.plow();
   fx.spawn(buildPt.x, 0.5, buildPt.z, 0x9a6a3c, 12, 1.5, 3, 9, 0.7);
   s.stats.plowed += 0;

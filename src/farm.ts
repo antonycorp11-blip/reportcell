@@ -6,7 +6,29 @@ import { grassTuft, soilGeometry, frameGeometry } from './crops';
 import { buildToonCrops } from './cropstoon';
 import { windToon, windOutline, hull } from './toon';
 
-export const TILE = 2, PN = 10, PCOUNT = 9, N = PN * PN * PCOUNT;
+export const TILE = 2, PN = 10, PCOUNT = 9, POTS = 48, P0 = PN * PN * PCOUNT, N = P0 + POTS;
+/** Vasos de defesa: canteiros avulsos construídos em qualquer lugar. */
+export const pot = { on: new Uint8Array(POTS), x: new Float32Array(POTS), z: new Float32Array(POTS) };
+export const POT_Y = 0.42;
+export const live = (t: number): boolean => (t < P0 ? owned[(t / 100) | 0] === 1 : pot.on[t - P0] === 1);
+export const tileY = (t: number) => (t < P0 ? 0 : POT_Y);
+export function addPot(x: number, z: number, slot = -1): number {
+  if (slot < 0 || pot.on[slot]) { slot = -1; for (let i = 0; i < POTS; i++) if (!pot.on[i]) { slot = i; break; } }
+  if (slot < 0) return -1;
+  pot.on[slot] = 1; pot.x[slot] = x; pot.z[slot] = z;
+  const t = P0 + slot;
+  if (T.s[t] === 0) T.s[t] = 1;
+  T.f[t] = 1.1;
+  dirty = true;
+  return slot;
+}
+export function removePot(slot: number) {
+  if (slot < 0) return;
+  pot.on[slot] = 0;
+  const t = P0 + slot;
+  T.s[t] = 0; T.c[t] = -1; T.g[t] = 0; T.h[t] = 0; T.k[t] = 0; T.a[t] = 0;
+  dirty = true;
+}
 export interface Parcel { id: number; x0: number; z0: number; fert: number }
 const ORDER = [[1, 0], [0, 0], [2, 0], [1, 1], [0, 1], [2, 1], [1, 2], [0, 2], [2, 2]];
 const FERT = [1, 1, 1, 1.1, 1.1, 1.1, 1.25, 1.25, 1.25];
@@ -48,11 +70,12 @@ export let rain = 0;
 export function setRain(r: number) { rain = r; }
 export const markDirty = () => { dirty = true; };
 
-export const tileX = (t: number) => PARCELS[(t / 100) | 0].x0 + ((t % 10) + 0.5) * TILE;
-export const tileZ = (t: number) => PARCELS[(t / 100) | 0].z0 + ((((t % 100) / 10) | 0) + 0.5) * TILE;
-export const isOwned = (t: number) => owned[(t / 100) | 0] === 1;
+export const tileX = (t: number) => (t >= P0 ? pot.x[t - P0] : PARCELS[(t / 100) | 0].x0 + ((t % 10) + 0.5) * TILE);
+export const tileZ = (t: number) => (t >= P0 ? pot.z[t - P0] : PARCELS[(t / 100) | 0].z0 + ((((t % 100) / 10) | 0) + 0.5) * TILE);
+export const isOwned = live;
 
 export function tileAt(x: number, z: number): number {
+  for (let i = 0; i < POTS; i++) if (pot.on[i] && (pot.x[i] - x) ** 2 + (pot.z[i] - z) ** 2 < 1.1) return P0 + i;
   if (x < FIELD.x1 || x > FIELD.x2 || z < FIELD.z1 || z > FIELD.z2) return -1;
   for (const p of PARCELS) {
     const i = Math.floor((x - p.x0) / TILE), j = Math.floor((z - p.z0) / TILE);
@@ -69,7 +92,7 @@ export function syncOwned() {
 
 export function resetTiles() {
   T.s.fill(0); T.c.fill(-1); T.g.fill(0); T.w.fill(0); T.l.fill(-1);
-  for (let t = 0; t < N; t++) T.f[t] = PARCELS[(t / 100) | 0].fert;
+  for (let t = 0; t < N; t++) T.f[t] = t < P0 ? PARCELS[(t / 100) | 0].fert : 1.1;
   dirty = true;
 }
 
@@ -79,9 +102,9 @@ export function serialize(): TileSave {
 }
 export function deserialize(d: TileSave | null) {
   resetTiles();
-  if (!d || !d.s || d.s.length !== N) return;
+  if (!d || !d.s || (d.s.length !== N && d.s.length !== P0)) return;
   T.s.set(d.s); T.c.set(d.c); T.g.set(d.g); T.w.set(d.w); T.f.set(d.f); T.l.set(d.l);
-  T.k.fill(0); if (d.k && d.k.length === N) T.k.set(d.k);
+  T.k.fill(0); if (d.k && d.k.length === d.s.length) T.k.set(d.k);
   for (let t = 0; t < N; t++) if (T.s[t] === 2) T.h[t] = tileMaxHp(t);
   dirty = true;
 }
@@ -89,7 +112,7 @@ export function deserialize(d: TileSave | null) {
 /** Canteiros afetados pela ferramenta conforme o nível de área. */
 export function area(t: number, a: number): number[] {
   if (t < 0) return [];
-  if (a <= 0) return [t];
+  if (a <= 0 || t >= P0) return [t];
   const p = (t / 100) | 0, i = t % 10, j = ((t % 100) / 10) | 0;
   const out: number[] = [];
   for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
@@ -169,7 +192,7 @@ export function step(dt: number) {
   const spr = lv('sprinkler') * 0.012;
   const delta = (spr + rain - drain) * dt;
   for (let t = 0; t < N; t++) {
-    if (!owned[(t / 100) | 0]) continue;
+    if (!live(t)) continue;
     const s = T.s[t];
     if (s === 1 || s === 2) {
       const w = T.w[t] + delta;
@@ -188,7 +211,7 @@ let scan = 0;
 export function findRipe(): number {
   for (let k = 0; k < N; k++) {
     scan = (scan + 1) % N;
-    if (owned[(scan / 100) | 0] && isRipe(scan)) return scan;
+    if (live(scan) && isRipe(scan)) return scan;
   }
   return -1;
 }
@@ -196,7 +219,7 @@ export function findRipe(): number {
 export function randomRipe(): number {
   for (let k = 0; k < 12; k++) {
     const t = (Math.random() * N) | 0;
-    if (owned[(t / 100) | 0] && isRipe(t)) return t;
+    if (live(t) && isRipe(t)) return t;
   }
   return -1;
 }
@@ -204,7 +227,7 @@ export function randomRipe(): number {
 export function countState(): { ripe: number; growing: number; dry: number } {
   let ripe = 0, growing = 0, dry = 0;
   for (let t = 0; t < N; t++) {
-    if (!owned[(t / 100) | 0] || T.s[t] !== 2) continue;
+    if (!live(t) || T.s[t] !== 2) continue;
     if (T.g[t] >= 1) ripe++; else { growing++; if (T.w[t] < 0.1) dry++; }
   }
   return { ripe, growing, dry };
@@ -291,12 +314,14 @@ export class FarmView {
     const no = new Array(this.crops.length).fill(0);
     const cx = this.cam.x, cz = this.cam.z;
     for (let t = 0; t < N; t++) {
-      const pid = (t / 100) | 0;
-      const own = owned[pid] === 1;
+      const isPot = t >= P0;
+      const pid = isPot ? 0 : (t / 100) | 0;
+      const own = live(t);
       if (!own) continue;
-      const x = tileX(t), z = tileZ(t);
+      const x = tileX(t), z = tileZ(t), y0 = isPot ? POT_Y : 0;
       const s = T.s[t];
-      const ap = appear[pid] >= 1 ? 1 : Math.max(0.001, Math.min(1, appear[pid] * 1.6 - (((t % 10) + (((t % 100) / 10) | 0)) / 18) * 0.6));
+      const ap = isPot ? 1 : appear[pid] >= 1 ? 1 : Math.max(0.001, Math.min(1, appear[pid] * 1.6 - (((t % 10) + (((t % 100) / 10) | 0)) / 18) * 0.6));
+      if (s === 0 && isPot) continue;
       if (s === 0) {
         q.setFromAxisAngle(up, (t * 2.399) % 6.283);
         const k = 1;
@@ -306,7 +331,8 @@ export class FarmView {
         ng++;
         continue;
       }
-      m4.makeScale(ap, ap, ap).setPosition(x, 0, z);
+      if (isPot) m4.makeScale(0.72, 1, 0.72).setPosition(x, y0 - 0.12, z);
+      else m4.makeScale(ap, ap, ap).setPosition(x, 0, z);
       this.soil.setMatrixAt(ns, m4);
       if (s === 3) col.copy(C_STUB).lerp(C_WET, T.w[t] * 0.5);
       else col.copy(C_DRY).lerp(C_WET, T.w[t]);
@@ -324,7 +350,7 @@ export class FarmView {
         const pu = al > 0 ? 0 : T.p[t];
         const ps = (1 + Math.max(0, pu) * 0.22) * (1 - al);
         const eat = pu < 0 ? 1 + pu * 0.25 : 1;
-        m4.compose(pv.set(x, 0.1, z), q, sv.set(sxz * ps * eat, (ripe ? 1.04 : sy) * (1 + Math.max(0, pu) * 0.12) * eat * (1 - al), sxz * ps * eat));
+        m4.compose(pv.set(x, 0.1 + y0, z), q, sv.set(sxz * ps * eat, (ripe ? 1.04 : sy) * (1 + Math.max(0, pu) * 0.12) * eat * (1 - al), sxz * ps * eat));
         const mesh = this.crops[c];
         mesh.setMatrixAt(nc[c], m4);
         const k = Math.max(0, Math.min(1, (g - 0.45) / 0.55));

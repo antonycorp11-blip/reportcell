@@ -30,7 +30,7 @@ export interface State {
   phaseT: number;
   nights: number;
   baseHp: number;
-  walls: { type: number; x: number; z: number; rot: number; hp: number }[];
+  walls: { type: number; x: number; z: number; rot: number; hp: number; slot?: number }[];
   res: Record<string, number>;
   entries: number[];
   buffs: Record<string, number>;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { bx, mat, cyl, cone, ico, box, addOutlines } from './gfx';
 import { game } from './state';
+import { addPot, removePot, pot, POTS, tileAt } from './farm';
 import type { FX } from './fx';
 
 export interface WallDef { name: string; icon: string; cost: Record<string, number>; hp: number; desc: string; level: number }
@@ -8,9 +9,10 @@ export const WALLS: WallDef[] = [
   { name: 'Cerca', icon: '🪵', cost: { wood: 3 }, hp: 260, desc: 'Bloqueia a passagem — os zumbis param para quebrar', level: 1 },
   { name: 'Espinhos', icon: '🌵', cost: { wood: 2, metal: 1 }, hp: 160, desc: 'Fere e deixa lento quem passa por cima', level: 2 },
   { name: 'Isca', icon: '🔔', cost: { wood: 4, metal: 2 }, hp: 380, desc: 'Espantalho barulhento: atrai zumbis num raio de 9 m', level: 4 },
+  { name: 'Vaso', icon: '🪴', cost: { wood: 3 }, hp: 999, desc: 'Canteiro de defesa: plante em qualquer lugar, até no meio da rota dos zumbis', level: 1 },
 ];
 
-export interface Wall { type: number; x: number; z: number; rot: number; hp: number; g: THREE.Group; bar: THREE.Mesh; hitT: number }
+export interface Wall { type: number; x: number; z: number; rot: number; hp: number; g: THREE.Group; bar: THREE.Mesh; hitT: number; slot: number }
 
 export class Walls {
   list: Wall[] = [];
@@ -37,6 +39,11 @@ export class Walls {
         s.rotation.set((Math.random() - 0.5) * 0.5, 0, (Math.random() - 0.5) * 0.5);
         s.castShadow = true; g.add(s);
       }
+    } else if (type === 3) {
+      const pot = new THREE.Mesh(cyl(0.9, 0.7, 0.5, 14), mat(0xc8673a)); pot.position.y = 0.25; g.add(pot);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.08, 6, 18), mat(0xa8532e)); rim.rotation.x = Math.PI / 2; rim.position.y = 0.5; g.add(rim);
+      const band = new THREE.Mesh(cyl(0.83, 0.8, 0.08, 14), mat(0xe8d6a0)); band.position.y = 0.26; g.add(band);
+      const soil = new THREE.Mesh(cyl(0.82, 0.82, 0.04, 14), mat(0x4e301b)); soil.position.y = 0.46; g.add(soil);
     } else {
       bx(g, 0.14, 2.4, 0.14, 0x6b4425, 0, 1.2, 0);
       bx(g, 1.6, 0.1, 0.1, 0x6b4425, 0, 1.8, 0);
@@ -51,7 +58,7 @@ export class Walls {
     return g;
   }
 
-  add(type: number, x: number, z: number, rot: number, hp?: number): Wall {
+  add(type: number, x: number, z: number, rot: number, hp?: number, slot = -1): Wall {
     const g = this.model(type);
     g.position.set(x, 0, z); g.rotation.y = rot;
     addOutlines(g, 0.035);
@@ -59,7 +66,7 @@ export class Walls {
     bar.position.y = type === 2 ? 3.1 : 1.9; bar.renderOrder = 21; bar.visible = false;
     g.add(bar);
     this.scene.add(g);
-    const w: Wall = { type, x, z, rot, hp: hp ?? WALLS[type].hp, g, bar, hitT: 0 };
+    const w: Wall = { type, x, z, rot, hp: hp ?? WALLS[type].hp, g, bar, hitT: 0, slot: type === 3 ? addPot(x, z, slot) : -1 };
     this.list.push(w);
     g.scale.setScalar(0.01);
     return w;
@@ -79,10 +86,12 @@ export class Walls {
   remove(w: Wall) {
     this.fx.spawn(w.x, 0.8, w.z, 0x9a6a3c, 25, 1.8, 4, 9, 0.9);
     this.scene.remove(w.g);
+    if (w.type === 3) removePot(w.slot);
     this.list.splice(this.list.indexOf(w), 1);
   }
 
-  clear() { for (const w of [...this.list]) this.scene.remove(w.g); this.list = []; }
+  clear() { for (const w of [...this.list]) { this.scene.remove(w.g); if (w.type === 3) removePot(w.slot); } this.list = []; }
+  pots() { let n = 0; for (const w of this.list) if (w.type === 3) n++; return n; }
 
   setGhost(type: number, x: number, z: number, rot: number, ok: boolean) {
     if (type < 0) { this.ghost.visible = false; return; }
@@ -119,11 +128,21 @@ export class Walls {
     }
   }
 
-  serialize() { return this.list.map((w) => ({ type: w.type, x: w.x, z: w.z, rot: w.rot, hp: Math.round(w.hp) })); }
-  load(arr: { type: number; x: number; z: number; rot: number; hp: number }[] | undefined) {
-    this.clear();
-    for (const w of arr || []) { const n = this.add(w.type, w.x, w.z, w.rot, w.hp); n.g.scale.setScalar(1); }
+  serialize() { return this.list.map((w) => ({ type: w.type, x: w.x, z: w.z, rot: w.rot, hp: Math.round(w.hp), slot: w.slot })); }
+  load(arr: { type: number; x: number; z: number; rot: number; hp: number; slot?: number }[] | undefined) {
+    for (const w of [...this.list]) this.scene.remove(w.g);
+    this.list = [];
+    pot.on.fill(0);
+    for (const w of arr || []) { const n = this.add(w.type, w.x, w.z, w.rot, w.hp, w.slot ?? -1); n.g.scale.setScalar(1); }
   }
+}
+
+/** Motivo para não poder construir (ou null). */
+export function cantBuild(type: number, x: number, z: number, walls: Walls): string | null {
+  if (type !== 3) return null;
+  if (walls.pots() >= POTS) return `Limite de ${POTS} vasos`;
+  if (tileAt(x, z) >= 0) return 'Já existe canteiro aqui';
+  return null;
 }
 
 export const wallCost = (t: number) => WALLS[t].cost;

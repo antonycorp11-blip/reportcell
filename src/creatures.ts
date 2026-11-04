@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { T, N, owned, tileX, tileZ, markDirty } from './farm';
+import { T, N, owned, live, tileY, tileX, tileZ, markDirty } from './farm';
 import { rng } from './gfx';
 import { CROPS } from './data';
 import { toon } from './toon';
@@ -265,7 +265,7 @@ export class Creatures {
     let ns = 0;
     let changed = false;
     for (let t = 0; t < N; t++) {
-      const ripe = T.s[t] === 2 && T.g[t] >= 1 && owned[(t / 100) | 0];
+      const ripe = T.s[t] === 2 && T.g[t] >= 1 && live(t);
       const want = ripe && night && this.nightT > this.delay[t] ? 1 : 0;
       const a0 = T.a[t];
       if (!ripe) { if (a0 !== 0) { T.a[t] = 0; changed = true; } continue; }
@@ -312,7 +312,7 @@ export class Creatures {
       if (pu > 0 && c2 !== 0) { sx *= 1 + pu * 0.1; sy *= 1 - pu * 0.08; }
       if (T.p[t] < 0) { sx *= 1 - T.p[t] * 0.12; sy *= 1 + T.p[t] * 0.25; }
       this.q.setFromEuler(this.e.set(lean, this.yaw[t], 0, 'YXZ'));
-      this.m4.compose(this.p.set(x, 0.1 + (lift + bounce) * k, z), this.q, this.sc.set(sx, sy, sx));
+      this.m4.compose(this.p.set(x, 0.1 + tileY(t) + (lift + bounce) * k, z), this.q, this.sc.set(sx, sy, sx));
       // cabeça
       this.q.setFromEuler(this.e.set(hp, this.hyaw[t], hr, 'YXZ'));
       this.h4.compose(this.p.set(md.pivot[0], md.pivot[1], md.pivot[2]), this.q, this.sc.set(hs, hs, hs));
@@ -325,7 +325,7 @@ export class Creatures {
         for (let si = 0; si < lvl; si++) {
           const ang = time * 2 + si * (6.283 / lvl);
           this.q.setFromEuler(this.e.set(0, time * 3, 0));
-          this.h4.compose(this.p.set(x + Math.cos(ang) * 0.35, (md.top + lift) * big + 0.2, z + Math.sin(ang) * 0.35), this.q, this.sc.set(1, 1, 1));
+          this.h4.compose(this.p.set(x + Math.cos(ang) * 0.35, (md.top + lift) * big + 0.2 + tileY(t), z + Math.sin(ang) * 0.35), this.q, this.sc.set(1, 1, 1));
           this.stars.setMatrixAt(ns++, this.h4);
         }
       }

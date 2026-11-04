@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as farm from './farm';
-import { T, N, owned, tileX, tileZ } from './farm';
+import { T, N, owned, live, tileY, tileX, tileZ } from './farm';
 import { lv, sk, pct } from './state';
 import { part, merge, ico, box } from './gfx';
 import type { Horde, Zombie } from './zombies';
@@ -110,7 +110,7 @@ export class Defense {
     for (let t = 0; t < N; t++) {
       if (T.p[t] !== 0) { T.p[t] = T.p[t] > 0 ? Math.max(0, T.p[t] - dt * 4) : Math.min(0, T.p[t] + dt * 2); pulsing = true; }
       this.hasAim[t] = 0;
-      if (!night || T.s[t] !== 2 || T.g[t] < 1 || !owned[(t / 100) | 0] || T.a[t] < 0.6) { this.charge[t] = 0; continue; }
+      if (!night || T.s[t] !== 2 || T.g[t] < 1 || !live(t) || T.a[t] < 0.6) { this.charge[t] = 0; continue; }
       const c = T.c[t]; const d0 = DEF[c];
       const d = { ...d0, range: d0.range * this.rangeK, cd: d0.cd / this.rateK };
       if (sk('d1') && T.h[t] < farm.tileMaxHp(t)) T.h[t] = Math.min(farm.tileMaxHp(t), T.h[t] + farm.tileMaxHp(t) * 0.04 * dt);
